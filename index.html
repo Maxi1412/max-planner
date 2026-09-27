@@ -133,7 +133,7 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .statusMark{font-size:20px;font-weight:900;line-height:1;flex-shrink:0;}
 .statusMark.ok{color:var(--ok);}
 .statusMark.cancel{color:var(--danger);}
-.addslot{width:100%;text-align:left;background:none;border:none;color:var(--sub);font-size:12px;padding:6px 0;}
+.addslot{width:100%;height:38px;text-align:left;background:none;border:none;color:var(--sub);font-size:12px;padding:6px 0;overflow:hidden;}
 
 /* MODALS / SHEETS */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.44);display:none;align-items:flex-end;justify-content:center;z-index:30;}
@@ -424,8 +424,8 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
 const META_KEY='max-planner-meta-v3';
-const VERSION=9;
-const APP_BUILD='PWA 1.1.1';
+const VERSION=10;
+const APP_BUILD='PWA 1.2.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -488,6 +488,16 @@ function save(){
 }
 function dayData(key){ if(!data[key]) data[key]={appts:[],todos:[],noteItems:[]}; migrateDay(data[key]); return data[key]; }
 
+function cleanAppointmentTitle(title){
+  let s=String(title||'').trim();
+  // Convert legacy visual status markers into the real status field elsewhere,
+  // and remove duration suffixes that are now represented by start/end times.
+  s=s.replace(/\s*✓\s*$/,'').replace(/\s*✗\s*not\s*done\s*$/i,'').trim();
+  s=s.replace(/\s*[,(]?\s*(?:\d+(?:[.,]\d+)?|[¼½¾])\s*(?:h|hr|hrs|hour|hours)\s*\)?\s*$/i,'').trim();
+  s=s.replace(/[\s,;:–—-]+$/,'').trim();
+  return s || String(title||'').trim();
+}
+
 function inferDurationMinutes(title){
   const s=String(title||'').trim();
   if(/\bwalk(?:\s+the)?\s+dog\b|\bdog\s+needs\s+walk\b/i.test(s)) return 60;
@@ -519,7 +529,19 @@ function inferredEndTime(start,title){
 
 function migrateDay(dd){
   if(!Array.isArray(dd.appts)) dd.appts=[];
-  dd.appts.forEach(a=>{ if(!a.id)a.id=uid('a'); if(!a.start)a.start=a.time||'09:00'; a.start=normalizeTime(a.start); if(a.end===undefined)a.end=''; a.end=normalizeTime(a.end); if(!a.end){const inferred=inferredEndTime(a.start,a.title);if(inferred)a.end=inferred;} if(!a.status)a.status='pending'; if(a.category===undefined)a.category='auto'; });
+  dd.appts.forEach(a=>{
+    if(!a.id)a.id=uid('a');
+    if(!a.start)a.start=a.time||'09:00';
+    a.start=normalizeTime(a.start);
+    if(a.end===undefined)a.end='';
+    a.end=normalizeTime(a.end);
+    const originalTitle=String(a.title||'');
+    if(!a.end){const inferred=inferredEndTime(a.start,originalTitle);if(inferred)a.end=inferred;}
+    if(!a.status)a.status='pending';
+    if(/\s*✓\s*$/.test(originalTitle) && a.status==='pending')a.status='completed';
+    a.title=cleanAppointmentTitle(originalTitle);
+    if(a.category===undefined)a.category='auto';
+  });
   if(!Array.isArray(dd.todos)){
     dd.todos=(dd.todo||'').split('\n').map(x=>x.trim()).filter(Boolean).map(text=>({id:uid('t'),text,status:'pending'}));
   }
@@ -531,17 +553,22 @@ function migrateDay(dd){
   if(!dd.recurringHidden) dd.recurringHidden={};
   if(!dd.defaultStatus) dd.defaultStatus={};
 }
-Object.keys(data).forEach(k=>migrateDay(data[k]));
-recurring.forEach(r=>{
-  if(r.type==='appointment'){
-    r.start=normalizeTime(r.start||'');
-    r.end=normalizeTime(r.end||'');
-    if(!r.end){
-      const inferred=inferredEndTime(r.start,r.title);
-      if(inferred) r.end=inferred;
+function migrateRecurringItems(){
+  recurring.forEach(r=>{
+    if(r.type==='appointment'){
+      r.start=normalizeTime(r.start||'');
+      r.end=normalizeTime(r.end||'');
+      const originalTitle=String(r.title||'');
+      if(!r.end){
+        const inferred=inferredEndTime(r.start,originalTitle);
+        if(inferred) r.end=inferred;
+      }
+      r.title=cleanAppointmentTitle(originalTitle);
     }
-  }
-});
+  });
+}
+Object.keys(data).forEach(k=>migrateDay(data[k]));
+migrateRecurringItems();
 
 // Preserve the appointments embedded in the original planner when this file is opened on a new device/browser.
 const SEED={
@@ -742,6 +769,12 @@ function renderDay(){
     const row=document.createElement('div');row.className='slot';
     const t=document.createElement('div');t.className='time';t.textContent=pad(h)+':00';
     const b=document.createElement('div');b.className='body';
+    const hourStart=h*60, hourEnd=hourStart+60;
+    const hourOccupied=appts.some(a=>{
+      const start=minutes(a.start);
+      const end=a.end?minutes(a.end):start+15;
+      return start<hourEnd && end>hourStart;
+    });
     appts.filter(a=>!isSpanningAppointment(a) && Number((a.start||'0').split(':')[0])===h).forEach(a=>{
       const ap=document.createElement('div');ap.className='appt '+appointmentVisualClass(a)+(a.flag?' flagged':'')+' '+(a.status||'');
       const mark=a.flag?'★ ':'';
@@ -749,9 +782,11 @@ function renderDay(){
       attachLongPress(ap,()=>appointmentActions(a,key),()=>editAppointment(a,key));
       b.appendChild(ap);
     });
-    const add=document.createElement('button');add.className='addslot';add.textContent='+ add';
-    add.onclick=()=>openAppointmentModal(null,key,pad(h)+':00');
-    b.appendChild(add);
+    if(!hourOccupied){
+      const add=document.createElement('button');add.className='addslot';add.textContent='+ add';
+      add.onclick=()=>openAppointmentModal(null,key,pad(h)+':00');
+      b.appendChild(add);
+    }
     row.append(t,b);slots.appendChild(row);
   });
   renderSpanningAppointments(appts,key,slots);
@@ -1115,7 +1150,7 @@ function exportBackup(){
   const a=document.createElement('a');a.href=url;a.download='max-planner-backup-'+iso(new Date())+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function restoreBackup(file){
-  const reader=new FileReader();reader.onload=()=>{try{const p=JSON.parse(reader.result);if(!p||typeof p.data!=='object')throw new Error('Invalid backup');data=p.data;recurring=Array.isArray(p.recurring)?p.recurring:[];meta=p.meta&&typeof p.meta==='object'?p.meta:{disabledDefaults:[]};if(!Array.isArray(meta.disabledDefaults))meta.disabledDefaults=[];Object.keys(data).forEach(k=>migrateDay(data[k]));save();document.getElementById('menuModal').classList.remove('open');render();alert('Backup restored.');}catch(e){alert('That file is not a valid planner backup.');}};reader.readAsText(file);
+  const reader=new FileReader();reader.onload=()=>{try{const p=JSON.parse(reader.result);if(!p||typeof p.data!=='object')throw new Error('Invalid backup');data=p.data;recurring=Array.isArray(p.recurring)?p.recurring:[];meta=p.meta&&typeof p.meta==='object'?p.meta:{disabledDefaults:[]};if(!Array.isArray(meta.disabledDefaults))meta.disabledDefaults=[];Object.keys(data).forEach(k=>migrateDay(data[k]));migrateRecurringItems();save();document.getElementById('menuModal').classList.remove('open');render();alert('Backup restored.');}catch(e){alert('That file is not a valid planner backup.');}};reader.readAsText(file);
 }
 
 // Print / PDF
