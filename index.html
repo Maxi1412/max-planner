@@ -417,16 +417,16 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
 const META_KEY='max-planner-meta-v3';
-const VERSION=8;
-const APP_BUILD='PWA 1.0.0';
+const VERSION=9;
+const APP_BUILD='PWA 1.1.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
 const MONTHNAMES=['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYNAMES=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 const DEFAULTS=[
-  {id:'d1',start:'09:00',end:'',title:'Walk dog',who:'mine',category:'general'},
-  {id:'d2',start:'10:00',end:'',title:'Breakfast',who:'mine',category:'meal'}
+  {id:'d1',start:'09:00',end:'10:00',title:'Walk dog',who:'mine',category:'general'},
+  {id:'d2',start:'10:00',end:'10:30',title:'Breakfast',who:'mine',category:'meal'}
 ];
 
 let data={};
@@ -473,9 +473,39 @@ function save(){
   try{localStorage.setItem(DATA_KEY,JSON.stringify(data));localStorage.setItem(RECUR_KEY,JSON.stringify(recurring));localStorage.setItem(META_KEY,JSON.stringify(meta));}catch(e){}
 }
 function dayData(key){ if(!data[key]) data[key]={appts:[],todos:[],noteItems:[]}; migrateDay(data[key]); return data[key]; }
+
+function inferDurationMinutes(title){
+  const s=String(title||'').trim();
+  if(/\bwalk(?:\s+the)?\s+dog\b|\bdog\s+needs\s+walk\b/i.test(s)) return 60;
+  if(/\bbreakfast\b/i.test(s)) return 30;
+  if(/[½]/.test(s) && /(?:h|hr|hour)/i.test(s)) return 30;
+  if(/[¼]/.test(s) && /(?:h|hr|hour)/i.test(s)) return 15;
+  if(/[¾]/.test(s) && /(?:h|hr|hour)/i.test(s)) return 45;
+  const hours=s.match(/(\d+(?:[.,]\d+)?)\s*(?:h|hr|hrs|hour|hours)\b/i);
+  if(hours){
+    const mins=Math.round(Number(hours[1].replace(',','.'))*60);
+    if(mins>0 && mins%15===0) return mins;
+  }
+  const mins=s.match(/(\d+)\s*(?:min|mins|minute|minutes)\b/i);
+  if(mins){
+    const n=Number(mins[1]);
+    if(n>0 && n%15===0) return n;
+  }
+  return 0;
+}
+function inferredEndTime(start,title){
+  const dur=inferDurationMinutes(title);
+  if(!dur||!start) return '';
+  const base=minutes(normalizeTime(start));
+  if(base===99999) return '';
+  const total=base+dur;
+  if(total>=24*60) return '';
+  return pad(Math.floor(total/60))+':'+pad(total%60);
+}
+
 function migrateDay(dd){
   if(!Array.isArray(dd.appts)) dd.appts=[];
-  dd.appts.forEach(a=>{ if(!a.id)a.id=uid('a'); if(!a.start)a.start=a.time||'09:00'; a.start=normalizeTime(a.start); if(a.end===undefined)a.end=''; a.end=normalizeTime(a.end); if(!a.status)a.status='pending'; if(a.category===undefined)a.category='auto'; });
+  dd.appts.forEach(a=>{ if(!a.id)a.id=uid('a'); if(!a.start)a.start=a.time||'09:00'; a.start=normalizeTime(a.start); if(a.end===undefined)a.end=''; a.end=normalizeTime(a.end); if(!a.end){const inferred=inferredEndTime(a.start,a.title);if(inferred)a.end=inferred;} if(!a.status)a.status='pending'; if(a.category===undefined)a.category='auto'; });
   if(!Array.isArray(dd.todos)){
     dd.todos=(dd.todo||'').split('\n').map(x=>x.trim()).filter(Boolean).map(text=>({id:uid('t'),text,status:'pending'}));
   }
@@ -488,6 +518,16 @@ function migrateDay(dd){
   if(!dd.defaultStatus) dd.defaultStatus={};
 }
 Object.keys(data).forEach(k=>migrateDay(data[k]));
+recurring.forEach(r=>{
+  if(r.type==='appointment'){
+    r.start=normalizeTime(r.start||'');
+    r.end=normalizeTime(r.end||'');
+    if(!r.end){
+      const inferred=inferredEndTime(r.start,r.title);
+      if(inferred) r.end=inferred;
+    }
+  }
+});
 
 // Preserve the appointments embedded in the original planner when this file is opened on a new device/browser.
 const SEED={
