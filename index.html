@@ -424,8 +424,8 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
 const META_KEY='max-planner-meta-v3';
-const VERSION=10;
-const APP_BUILD='PWA 1.2.0';
+const VERSION=11;
+const APP_BUILD='PWA 1.3.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -470,6 +470,35 @@ function appointmentVisualClass(a){
   const autoMeal=/\b(breakfast|brunch|lunch|dinner|meal|sushi|restaurant|eat|food)\b/i.test(title);
   if(a.category==='meal' || (a.category!=='general' && autoMeal)) return 'meal';
   return a.who||'mine';
+}
+function isWorkAppointment(a){
+  return a && a.who==='work' && /\bwork\b/i.test(String(a.title||''));
+}
+function workSupportTitles(){
+  return ['Get ready for work','Drive to work'];
+}
+function ensureWorkSupportBlocksForDay(key){
+  const dd=dayData(key);
+  const work=dd.appts.find(a=>isWorkAppointment(a) && normalizeTime(a.start)==='19:00' && normalizeTime(a.end)==='23:00' && a.status!=='cancelled');
+  if(!work) return;
+  const wanted=[
+    {start:'18:00',end:'18:30',title:'Get ready for work'},
+    {start:'18:30',end:'19:00',title:'Drive to work'}
+  ];
+  wanted.forEach(w=>{
+    const exists=dd.appts.some(a=>normalizeTime(a.start)===w.start && normalizeTime(a.end)===w.end && String(a.title||'').trim().toLowerCase()===w.title.toLowerCase());
+    if(!exists) dd.appts.push({id:uid('a'),start:w.start,end:w.end,title:w.title,who:'work',category:'general',status:'pending',autoWorkSupport:true});
+  });
+}
+function removeAutoWorkSupportBlocksForDay(key){
+  const dd=dayData(key);
+  dd.appts=dd.appts.filter(a=>!a.autoWorkSupport);
+}
+function syncAllWorkSupportBlocks(){
+  Object.keys(data).forEach(key=>{
+    removeAutoWorkSupportBlocksForDay(key);
+    ensureWorkSupportBlocksForDay(key);
+  });
 }
 function durationMinutes(a){
   if(!a.start||!a.end) return 0;
@@ -637,6 +666,9 @@ if(!meta.todoSep27V7Applied){
   meta.todoSep27V7Applied=true;
 }
 
+// Automatically add preparation/travel blocks for every confirmed workday.
+syncAllWorkSupportBlocks();
+
 // Migrate the old hard-coded plaster reminder to an editable recurring reminder.
 if(!recurring.some(r=>r.id==='pflaster-series')){
   recurring.push({id:'pflaster-series',type:'reminder',title:'Mama Pflaster due (patch, every 3 days)',who:'mum',flag:true,startDate:'2026-09-25',repeat:'interval',interval:3,start:'',end:''});
@@ -677,7 +709,18 @@ function mergedAppts(key){
   const disabled=meta.disabledDefaults||[];
   const defs=DEFAULTS.filter(def=>!disabled.includes(def.id) && !removed.includes(def.id) && !dd.appts.some(a=>normalizeTime(a.start)===def.start && a.title===def.title)).map(def=>({...def,id:def.id+'-'+key,defaultId:def.id,isDefault:true,status:dd.defaultStatus[def.id]||'pending'}));
   const rec=recurringForDate(parseIso(key),'appointment').filter(r=>!dd.appts.some(a=>normalizeTime(a.start)===normalizeTime(r.start) && a.title===r.title));
-  return dd.appts.concat(defs,rec).sort((a,b)=>minutes(a.start)-minutes(b.start));
+  const all=dd.appts.concat(defs,rec);
+  const hasWork=all.some(a=>isWorkAppointment(a) && normalizeTime(a.start)==='19:00' && normalizeTime(a.end)==='23:00' && a.status!=='cancelled');
+  if(hasWork){
+    const support=[
+      {id:'auto-ready-'+key,start:'18:00',end:'18:30',title:'Get ready for work',who:'work',category:'general',status:'pending',isGeneratedWorkSupport:true},
+      {id:'auto-drive-'+key,start:'18:30',end:'19:00',title:'Drive to work',who:'work',category:'general',status:'pending',isGeneratedWorkSupport:true}
+    ];
+    support.forEach(s=>{
+      if(!all.some(a=>normalizeTime(a.start)===s.start && normalizeTime(a.end)===s.end && String(a.title||'').trim().toLowerCase()===s.title.toLowerCase())) all.push(s);
+    });
+  }
+  return all.sort((a,b)=>minutes(a.start)-minutes(b.start));
 }
 function recurringNotes(key){return recurringForDate(parseIso(key),'reminder');}
 function statusMark(a){
@@ -1011,6 +1054,8 @@ function saveAppointmentFromModal(){
   }else{
     dayData(date).appts.push({id:uid('a'),start,end,title,who:whoSel,category,flag,status:'pending'});
   }
+  // Keep work preparation/travel blocks synchronized whenever a work appointment is created or edited.
+  syncAllWorkSupportBlocks();
   current=parseIso(date);
   save();
   document.getElementById('apptModal').classList.remove('open');
@@ -1028,6 +1073,7 @@ function setAppointmentStatus(a,key,status){
   if(a.isRecurring)dd.recurringStatus[a.seriesId]=status;
   else if(a.isDefault){ dd.defaultStatus[a.defaultId||a.id.split('-')[0]]=status; }
   else{const found=dd.appts.find(x=>x.id===a.id);if(found)found.status=status;}
+  syncAllWorkSupportBlocks();
   save();render();
 }
 function appointmentActions(a,key){
@@ -1035,9 +1081,9 @@ function appointmentActions(a,key){
   if(a.status!=='completed') actions.push({label:'✓ Completed',cls:'good',fn:()=>setAppointmentStatus(a,key,'completed')});
   else actions.push({label:'Mark as pending',fn:()=>setAppointmentStatus(a,key,'pending')});
   if(a.status!=='cancelled') actions.push({label:'Not completed…',fn:()=>notCompletedActions(a,key)});
-  if(!a.isRecurring&&!a.isDefault) actions.push({label:'Edit appointment',fn:()=>openAppointmentModal(a,key)});
+  if(!a.isRecurring&&!a.isDefault&&!a.isGeneratedWorkSupport) actions.push({label:'Edit appointment',fn:()=>openAppointmentModal(a,key)});
   if(a.isRecurring) actions.push({label:'Edit recurring series',fn:()=>{const r=recurring.find(x=>x.id===a.seriesId);if(r)openRecurringEditor(r);}});
-  if(!a.isDefault) actions.push({label:'Delete',cls:'bad',fn:()=>deleteAppointment(a,key)});
+  if(!a.isDefault&&!a.isGeneratedWorkSupport) actions.push({label:'Delete',cls:'bad',fn:()=>deleteAppointment(a,key)});
   showActions(a.title,actions);
 }
 function notCompletedActions(a,key){
@@ -1056,6 +1102,7 @@ function rescheduleAppointment(a,key){
 function deleteAppointment(a,key){
   const dd=dayData(key);
   if(a.isRecurring)dd.recurringHidden[a.seriesId]=true; else if(a.isDefault)dd.removedDefaults=[...(dd.removedDefaults||[]),a.defaultId||a.id.split('-')[0]]; else dd.appts=dd.appts.filter(x=>x.id!==a.id);
+  syncAllWorkSupportBlocks();
   save();render();
 }
 
@@ -1150,7 +1197,7 @@ function exportBackup(){
   const a=document.createElement('a');a.href=url;a.download='max-planner-backup-'+iso(new Date())+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function restoreBackup(file){
-  const reader=new FileReader();reader.onload=()=>{try{const p=JSON.parse(reader.result);if(!p||typeof p.data!=='object')throw new Error('Invalid backup');data=p.data;recurring=Array.isArray(p.recurring)?p.recurring:[];meta=p.meta&&typeof p.meta==='object'?p.meta:{disabledDefaults:[]};if(!Array.isArray(meta.disabledDefaults))meta.disabledDefaults=[];Object.keys(data).forEach(k=>migrateDay(data[k]));migrateRecurringItems();save();document.getElementById('menuModal').classList.remove('open');render();alert('Backup restored.');}catch(e){alert('That file is not a valid planner backup.');}};reader.readAsText(file);
+  const reader=new FileReader();reader.onload=()=>{try{const p=JSON.parse(reader.result);if(!p||typeof p.data!=='object')throw new Error('Invalid backup');data=p.data;recurring=Array.isArray(p.recurring)?p.recurring:[];meta=p.meta&&typeof p.meta==='object'?p.meta:{disabledDefaults:[]};if(!Array.isArray(meta.disabledDefaults))meta.disabledDefaults=[];Object.keys(data).forEach(k=>migrateDay(data[k]));migrateRecurringItems();syncAllWorkSupportBlocks();save();document.getElementById('menuModal').classList.remove('open');render();alert('Backup restored.');}catch(e){alert('That file is not a valid planner backup.');}};reader.readAsText(file);
 }
 
 // Print / PDF
