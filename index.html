@@ -8,7 +8,7 @@
 :root{
   --bg:#f6f3ec; --card:#ffffff; --ink:#2b2b2b; --sub:#7a7568;
   --line:#e2ddd0; --mine:#0E7490; --mine-bg:#e3f2f6; --mum:#c2410c; --mum-bg:#fdece2;
-  --work:#475569; --work-bg:#e2e8f0; --meal:#8a5b00; --meal-bg:#fff0bd; --other:#7e22ce; --other-bg:#f3e8fd;
+  --work:#475569; --work-bg:#e2e8f0; --meal:#166534; --meal-bg:#dcfce7; --other:#7e22ce; --other-bg:#f3e8fd;
   --accent:#1d4e46; --sticky:#fff6cf; --sticky-border:#e8d98a; --flag:#d97706;
   --ok:#18794e; --ok-bg:#e5f5ec; --danger:#b42318; --danger-bg:#feeceb;
   box-sizing:border-box;
@@ -18,13 +18,13 @@
   :root:not([data-theme="light"]){
     --bg:#181614; --card:#242220; --ink:#f0ede6; --sub:#a39a8a;
     --line:#3a362f; --mine-bg:#123b45; --mum-bg:#3d2115; --sticky:#3a3418; --sticky-border:#5a4f22;
-    --work-bg:#2a3138; --meal-bg:#443615; --other-bg:#2e1f3d; --ok-bg:#18392a; --danger-bg:#44211f;
+    --work-bg:#2a3138; --meal-bg:#173b2a; --other-bg:#2e1f3d; --ok-bg:#18392a; --danger-bg:#44211f;
   }
 }
 :root[data-theme="dark"]{
   --bg:#181614; --card:#242220; --ink:#f0ede6; --sub:#a39a8a;
   --line:#3a362f; --mine-bg:#123b45; --mum-bg:#3d2115; --sticky:#3a3418; --sticky-border:#5a4f22;
-  --work-bg:#2a3138; --meal-bg:#443615; --other-bg:#2e1f3d; --ok-bg:#18392a; --danger-bg:#44211f;
+  --work-bg:#2a3138; --meal-bg:#173b2a; --other-bg:#2e1f3d; --ok-bg:#18392a; --danger-bg:#44211f;
 }
 html,body{height:100%;}
 html{scroll-padding-top:env(safe-area-inset-top,0px);}
@@ -110,12 +110,12 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .miniAdd input{min-width:0;flex:1;padding:7px;border:1px solid var(--sticky-border);border-radius:7px;background:rgba(255,255,255,.48);color:var(--ink);font-size:12px;}
 .miniAdd button{width:32px;border:none;border-radius:7px;background:var(--accent);color:#fff;font-weight:800;font-size:17px;}
 #slots{position:relative;}
-.slot{display:flex;border-top:1px solid var(--line);height:48px;position:relative;}
+.slot{display:flex;border-top:1px solid var(--line);height:84px;position:relative;}
 .slot:last-child{border-bottom:1px solid var(--line);}
 .slot .time{width:52px;flex-shrink:0;color:var(--sub);font-size:12px;padding:9px 0;font-weight:700;}
-.slot .body{flex:1;padding:5px 0;min-height:48px;position:relative;}
+.slot .body{flex:1;padding:5px 0;min-height:84px;position:relative;}
 #spanLayer{position:absolute;left:52px;right:0;top:0;z-index:4;pointer-events:none;}
-.appt.span{position:absolute;left:0;right:0;margin:2px 0;pointer-events:auto;overflow:hidden;align-items:flex-start;box-shadow:0 1px 2px rgba(0,0,0,.08);}
+.appt.span{position:absolute;left:0;right:0;margin:2px 0;padding:5px 9px;pointer-events:auto;overflow:hidden;align-items:flex-start;box-shadow:0 1px 2px rgba(0,0,0,.08);}
 .appt.span .spanMain{display:block;line-height:1.25;}
 .appt.span .spanDuration{display:block;font-size:11px;opacity:.82;margin-top:2px;}
 .appt{border-radius:8px;padding:8px 10px;margin:2px 0;font-size:13px;display:flex;justify-content:space-between;gap:7px;align-items:flex-start;user-select:none;-webkit-user-select:none;}
@@ -424,8 +424,8 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
 const META_KEY='max-planner-meta-v3';
-const VERSION=11;
-const APP_BUILD='PWA 1.3.0';
+const VERSION=12;
+const APP_BUILD='PWA 1.4.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -463,12 +463,13 @@ function appointmentRoleSuffix(a){
   if(a?.who==='other' && !/\bother\b/.test(title)) return ' · Other';
   return '';
 }
+function isMealTitle(title){
+  return /\b(breakfast|brunch|lunch|dinner|supper|meal|snack|coffee|tea|sushi|restaurant|eat|food|cafe|café)\b/i.test(String(title||''));
+}
 function appointmentVisualClass(a){
   if(a.who==='mum') return 'mum';
   if(a.who==='work') return 'work';
-  const title=String(a.title||'');
-  const autoMeal=/\b(breakfast|brunch|lunch|dinner|meal|sushi|restaurant|eat|food)\b/i.test(title);
-  if(a.category==='meal' || (a.category!=='general' && autoMeal)) return 'meal';
+  if(a.category==='meal' || isMealTitle(a.title)) return 'meal';
   return a.who||'mine';
 }
 function isWorkAppointment(a){
@@ -505,7 +506,7 @@ function durationMinutes(a){
   const start=minutes(a.start),end=minutes(a.end);
   return end>start?end-start:0;
 }
-function isSpanningAppointment(a){return durationMinutes(a)>=60;}
+function isSpanningAppointment(a){return durationMinutes(a)>0;}
 function repeatLabel(r){
   if(r.repeat==='daily') return 'Every day';
   if(r.repeat==='weekly') return 'Every week';
@@ -570,6 +571,7 @@ function migrateDay(dd){
     if(/\s*✓\s*$/.test(originalTitle) && a.status==='pending')a.status='completed';
     a.title=cleanAppointmentTitle(originalTitle);
     if(a.category===undefined)a.category='auto';
+    if(a.who!=='mum' && a.who!=='work' && isMealTitle(a.title))a.category='meal';
   });
   if(!Array.isArray(dd.todos)){
     dd.todos=(dd.todo||'').split('\n').map(x=>x.trim()).filter(Boolean).map(text=>({id:uid('t'),text,status:'pending'}));
@@ -593,6 +595,7 @@ function migrateRecurringItems(){
         if(inferred) r.end=inferred;
       }
       r.title=cleanAppointmentTitle(originalTitle);
+      if(r.who!=='mum' && r.who!=='work' && isMealTitle(r.title))r.category='meal';
     }
   });
 }
@@ -838,7 +841,7 @@ function renderDay(){
 function renderSpanningAppointments(appts,key,slots){
   const visualStart=VISUAL_HOURS[0]*60;
   const visualEnd=(VISUAL_HOURS[VISUAL_HOURS.length-1]+1)*60;
-  const pxPerHour=48;
+  const pxPerHour=84;
   const spans=appts.filter(isSpanningAppointment)
     .filter(a=>minutes(a.start)<visualEnd && minutes(a.end)>visualStart)
     .sort((a,b)=>minutes(a.start)-minutes(b.start)||minutes(a.end)-minutes(b.end));
@@ -875,7 +878,8 @@ function renderSpanningAppointments(appts,key,slots){
     const clippedStart=Math.max(minutes(a.start),visualStart);
     const clippedEnd=Math.min(minutes(a.end),visualEnd);
     const top=((clippedStart-visualStart)/60)*pxPerHour;
-    const height=Math.max(34,((clippedEnd-clippedStart)/60)*pxPerHour-4);
+    const duration=clippedEnd-clippedStart;
+    const height=Math.max(duration<=15?26:34,(duration/60)*pxPerHour-4);
     const pos=layout.get(a)||{col:0,cols:1};
     const gap=4;
     const ap=document.createElement('div');
@@ -984,6 +988,7 @@ function openAppointmentModal(a,key,defaultStart){
   if(sheet) sheet.scrollTop=0;
 }
 function editAppointment(a,key){
+  if(a?.autoWorkSupport || a?.isGeneratedWorkSupport) return;
   openAppointmentModal(a,key);
 }
 
@@ -1014,7 +1019,8 @@ function saveAppointmentFromModal(){
   const {title,date,start,end}=v;
   const repeat=document.getElementById('fRepeat').value;
   const flag=document.getElementById('fFlag').checked;
-  const category=document.getElementById('fCategory').value||'auto';
+  let category=document.getElementById('fCategory').value||'auto';
+  if(whoSel!=='mum' && whoSel!=='work' && isMealTitle(title))category='meal';
   const interval=repeat==='interval'?Math.max(2,Number(document.getElementById('fInterval').value)||3):undefined;
 
   if(pendingReschedule){
@@ -1077,6 +1083,10 @@ function setAppointmentStatus(a,key,status){
   save();render();
 }
 function appointmentActions(a,key){
+  if(a?.autoWorkSupport || a?.isGeneratedWorkSupport){
+    showActions(a.title,[{label:'Managed automatically from the work shift',fn:()=>{}}]);
+    return;
+  }
   const actions=[];
   if(a.status!=='completed') actions.push({label:'✓ Completed',cls:'good',fn:()=>setAppointmentStatus(a,key,'completed')});
   else actions.push({label:'Mark as pending',fn:()=>setAppointmentStatus(a,key,'pending')});
