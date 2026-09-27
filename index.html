@@ -57,7 +57,9 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .daycard.pad{opacity:.4;}
 .daycard.today{border-color:var(--accent);border-width:2px;}
 .daycard .dnum{color:var(--sub);font-size:12px;margin-bottom:6px;font-weight:700;}
-.preview{font-size:12px;padding:4px 6px;border-radius:6px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.preview{font-size:12px;padding:5px 6px;border-radius:6px;margin-top:4px;overflow:hidden;}
+.previewTitle{display:block;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.previewTime{display:block;font-size:10px;opacity:.78;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .preview.mine{background:var(--mine-bg);color:var(--mine);}
 .preview.mum{background:var(--mum-bg);color:var(--mum);font-weight:800;}
 .preview.work{background:var(--work-bg);color:var(--work);font-weight:800;}
@@ -82,7 +84,7 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .weekReminder{background:var(--sticky);border:1px solid var(--sticky-border);border-radius:8px;padding:8px 9px;margin:5px 0;font-size:13px;font-weight:700;}
 .weekTodo{font-size:13px;padding:6px 0;border-bottom:1px dashed var(--line);}
 .weekTodo.done{text-decoration:line-through;opacity:.55;}
-.weekAppt{border-radius:9px;padding:8px 10px;margin:6px 0;font-size:13px;display:flex;gap:8px;align-items:flex-start;}
+.weekAppt{border-radius:9px;padding:8px 10px;margin:6px 0;font-size:13px;display:block;}
 .weekAppt.mine{background:var(--mine-bg);color:var(--mine);}
 .weekAppt.mum{background:var(--mum-bg);color:var(--mum);font-weight:800;}
 .weekAppt.work{background:var(--work-bg);color:var(--work);font-weight:800;}
@@ -90,7 +92,8 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .weekAppt.other{background:var(--other-bg);color:var(--other);}
 .weekAppt.completed{opacity:.58;text-decoration:line-through;}
 .weekAppt.cancelled{opacity:.42;text-decoration:line-through;}
-.weekAppt .wkTime{min-width:83px;font-weight:800;}
+.weekAppt .wkTitle{display:block;font-weight:800;line-height:1.25;}
+.weekAppt .wkTime{display:block;font-size:11px;font-weight:700;opacity:.82;margin-top:2px;}
 .emptyMsg{color:var(--sub);font-size:13px;padding:10px 0;}
 
 /* DAY VIEW */
@@ -115,7 +118,10 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .appt.span{position:absolute;left:0;right:0;margin:2px 0;pointer-events:auto;overflow:hidden;align-items:flex-start;box-shadow:0 1px 2px rgba(0,0,0,.08);}
 .appt.span .spanMain{display:block;line-height:1.25;}
 .appt.span .spanDuration{display:block;font-size:11px;opacity:.82;margin-top:2px;}
-.appt{border-radius:8px;padding:8px 10px;margin:2px 0;font-size:13px;display:flex;justify-content:space-between;gap:7px;align-items:center;user-select:none;-webkit-user-select:none;}
+.appt{border-radius:8px;padding:8px 10px;margin:2px 0;font-size:13px;display:flex;justify-content:space-between;gap:7px;align-items:flex-start;user-select:none;-webkit-user-select:none;}
+.apptMain{display:block;line-height:1.25;min-width:0;}
+.apptTitle{display:block;font-weight:800;white-space:normal;}
+.apptTime{display:block;font-size:11px;font-weight:700;opacity:.82;margin-top:2px;}
 .appt.mine{background:var(--mine-bg);color:var(--mine);}
 .appt.mum{background:var(--mum-bg);color:var(--mum);font-weight:800;}
 .appt.work{background:var(--work-bg);color:var(--work);font-weight:800;}
@@ -183,6 +189,7 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .printWeekTable .importantRow td{height:21mm;}
 .printWeekTable .hourRow td{height:10mm;}
 .printEntry{margin-bottom:1mm;line-height:1.2;font-size:9pt;}
+.printTime{display:block;font-size:8pt;font-weight:700;margin-top:.4mm;}
 .printEntry.mum{font-weight:900;}
 .printEntry.completed{text-decoration:line-through;}
 .printEntry.cancelled{text-decoration:line-through;opacity:.55;}
@@ -418,7 +425,7 @@ const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
 const META_KEY='max-planner-meta-v3';
 const VERSION=9;
-const APP_BUILD='PWA 1.1.0';
+const APP_BUILD='PWA 1.1.1';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -449,6 +456,13 @@ function minutes(t){ if(!t) return 99999; const [h,m]=t.split(':').map(Number); 
 function fmtTime(t){return t||'';}
 function timeRange(a){return a.end && a.end!==a.start ? `${a.start}–${a.end}` : a.start;}
 function whoLabel(w){return ({mine:'Me',mum:'Mum',work:'Work',other:'Other'})[w]||'';}
+function appointmentRoleSuffix(a){
+  const title=String(a?.title||'').toLowerCase();
+  if(a?.who==='mum' && !/\b(mum|mama|mother)\b/.test(title)) return ' · Mum';
+  if(a?.who==='work' && !/\bwork(?:ing)?\b/.test(title)) return ' · Work';
+  if(a?.who==='other' && !/\bother\b/.test(title)) return ' · Other';
+  return '';
+}
 function appointmentVisualClass(a){
   if(a.who==='mum') return 'mum';
   if(a.who==='work') return 'work';
@@ -661,7 +675,8 @@ function renderMonth(){
     list.slice(0,3).forEach(a=>{
       const p=document.createElement('div');
       p.className='preview '+appointmentVisualClass(a)+' '+(a.status||'');
-      p.textContent=(a.flag?'★ ':'')+(a.status==='completed'?'✓ ':a.status==='cancelled'?'✕ ':'')+timeRange(a)+' '+a.title;
+      const mark=(a.status==='completed'?'✓ ':a.status==='cancelled'?'✕ ':'')+(a.flag?'★ ':'');
+      p.innerHTML=`<span class="previewTitle">${mark}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</span><span class="previewTime">${timeRange(a)}</span>`;
       card.appendChild(p);
     });
     const noteCount=recurringNotes(key).length;
@@ -703,7 +718,8 @@ function renderWeek(){
     if(!appts.length){const e=document.createElement('div');e.className='emptyMsg';e.textContent='No appointments';sec.appendChild(e);}
     appts.forEach(a=>{
       const x=document.createElement('div');x.className='weekAppt '+appointmentVisualClass(a)+' '+(a.status||'');
-      x.innerHTML=`<span class="wkTime">${a.status==='completed'?'✓ ':a.status==='cancelled'?'✕ ':''}${timeRange(a)}</span><span>${a.flag?'★ ':''}${escapeHtml(a.title)}${a.who==='mum'?' · Mum':''}</span>`;
+      const mark=(a.status==='completed'?'✓ ':a.status==='cancelled'?'✕ ':'')+(a.flag?'★ ':'');
+      x.innerHTML=`<span class="wkTitle">${mark}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</span><span class="wkTime">${timeRange(a)}</span>`;
       attachLongPress(x,()=>appointmentActions(a,key),()=>editAppointment(a,key));
       sec.appendChild(x);
     });
@@ -728,8 +744,8 @@ function renderDay(){
     const b=document.createElement('div');b.className='body';
     appts.filter(a=>!isSpanningAppointment(a) && Number((a.start||'0').split(':')[0])===h).forEach(a=>{
       const ap=document.createElement('div');ap.className='appt '+appointmentVisualClass(a)+(a.flag?' flagged':'')+' '+(a.status||'');
-      const tag=a.who==='mum'?' · Mum':a.who==='work'?' · Work':a.who==='other'?' · Other':'';
-      ap.innerHTML=`<span>${a.flag?'★ ':''}<strong>${timeRange(a)}</strong> ${escapeHtml(a.title)}${tag}</span>${statusMark(a)}`;
+      const mark=a.flag?'★ ':'';
+      ap.innerHTML=`<span class="apptMain"><span class="apptTitle">${mark}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</span><span class="apptTime">${timeRange(a)}</span></span>${statusMark(a)}`;
       attachLongPress(ap,()=>appointmentActions(a,key),()=>editAppointment(a,key));
       b.appendChild(ap);
     });
@@ -791,8 +807,7 @@ function renderSpanningAppointments(appts,key,slots){
     ap.style.right='auto';
     ap.style.left=`calc(${(pos.col/pos.cols)*100}% + ${pos.col?gap/2:0}px)`;
     ap.style.width=`calc(${100/pos.cols}% - ${pos.cols>1?gap/2:0}px)`;
-    const tag=a.who==='mum'?' · Mum':a.who==='work'?' · Work':a.who==='other'?' · Other':'';
-    ap.innerHTML=`<span class="spanMain">${a.flag?'★ ':''}<strong>${escapeHtml(a.title)}${tag}</strong><span class="spanDuration">${timeRange(a)}</span></span>${statusMark(a)}`;
+    ap.innerHTML=`<span class="spanMain"><strong>${a.flag?'★ ':''}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</strong><span class="spanDuration">${timeRange(a)}</span></span>${statusMark(a)}`;
     attachLongPress(ap,()=>appointmentActions(a,key),()=>editAppointment(a,key));
     layer.appendChild(ap);
   });
@@ -1134,9 +1149,9 @@ function buildPrintWeek(){
           const done=a.status==='completed'?'✓ ':'';
           const star=a.flag?'★ ':'';
           if(a.who==='mum'){
-            cell+=`<div class="printEntry mum ${a.status||''}">${done}${star}<b>${timeRange(a)}</b> · <b>MUM</b> — ${escapeHtml(a.title)}</div>`;
+            cell+=`<div class="printEntry mum ${a.status||''}">${done}${star}<b>MUM — ${escapeHtml(a.title)}</b><span class="printTime">${timeRange(a)}</span></div>`;
           }else if(a.who==='work'){
-            cell+=`<div class="printEntry ${a.status||''}">${done}<b>${timeRange(a)}</b> · <b>MAX WORK</b></div>`;
+            cell+=`<div class="printEntry ${a.status||''}">${done}<b>MAX WORK</b><span class="printTime">${timeRange(a)}</span></div>`;
           }
         });
       html+=`<td>${cell}</td>`;
