@@ -472,7 +472,7 @@ function appointmentVisualClass(a){
   return a.who||'mine';
 }
 function isWorkAppointment(a){
-  return a && a.who==='work' && /\bwork\b/i.test(String(a.title||''));
+  return a && a.who==='work' && !a.autoWorkSupport && !a.isGeneratedWorkSupport;
 }
 function workSupportTitles(){
   return ['Get ready for work','Drive to work'];
@@ -1202,7 +1202,7 @@ function restoreBackup(file){
 
 // Print / PDF
 function isMumPrintAppointment(a){
-  return a && (a.who==='mum' || a.who==='work') && a.status!=='cancelled';
+  return a && (a.who==='mum' || (a.who==='work' && !a.autoWorkSupport && !a.isGeneratedWorkSupport)) && a.status!=='cancelled';
 }
 function buildPrintWeek(){
   const ws=startOfWeek(current),we=dateAdd(ws,6);const sheet=document.getElementById('printSheet');
