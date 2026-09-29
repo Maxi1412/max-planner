@@ -436,8 +436,8 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
 const META_KEY='max-planner-meta-v3';
-const VERSION=13;
-const APP_BUILD='PWA 1.5.0';
+const VERSION=14;
+const APP_BUILD='PWA 1.6.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -679,6 +679,48 @@ if(!meta.todoSep27V7Applied){
     }
   });
   meta.todoSep27V7Applied=true;
+}
+
+// Confirmed waiter roster from screenshots: 28 Sep – 18 Oct 2026.
+if(!meta.workRosterThroughOct18Applied){
+  const rosterDates=[
+    '2026-09-28','2026-09-29','2026-09-30',
+    '2026-10-01','2026-10-02','2026-10-03','2026-10-04',
+    '2026-10-05','2026-10-06','2026-10-07','2026-10-08','2026-10-09','2026-10-10','2026-10-11',
+    '2026-10-12','2026-10-13','2026-10-14','2026-10-15','2026-10-16','2026-10-17','2026-10-18'
+  ];
+  const workDates=new Set([
+    '2026-09-28','2026-09-30',
+    '2026-10-02','2026-10-03','2026-10-04',
+    '2026-10-05','2026-10-07','2026-10-08','2026-10-10','2026-10-11',
+    '2026-10-12','2026-10-13','2026-10-15','2026-10-16','2026-10-17'
+  ]);
+
+  rosterDates.forEach(key=>{
+    const dd=dayData(key);
+
+    // Replace only the standard evening work roster blocks; preserve unrelated appointments.
+    dd.appts=dd.appts.filter(a=>{
+      const title=String(a.title||'').trim().toLowerCase();
+      const rosterWorkTitle=['work','working','start work','prep for work','get ready for work','leave for work','go to work','drive to work'].includes(title);
+      return !(a.autoWorkSupport || a.isGeneratedWorkSupport || (a.who==='work' && (rosterWorkTitle || minutes(a.start)>=18*60)));
+    });
+
+    // Clean old/off labels from earlier seed data.
+    dd.noteItems=dd.noteItems.filter(n=>!/^(alex|max)\s+off$/i.test(String(n.text||'').trim()));
+    if(typeof dd.notes==='string' && /^(alex|max)\s+off$/i.test(dd.notes.trim())) dd.notes='';
+
+    if(workDates.has(key)){
+      dd.appts.push({
+        id:uid('a'),start:'19:00',end:'23:00',
+        title:'Work',who:'work',category:'general',status:'pending'
+      });
+    }else{
+      dd.noteItems.push({id:uid('n'),text:'Max OFF'});
+    }
+  });
+
+  meta.workRosterThroughOct18Applied=true;
 }
 
 // Automatically add preparation/travel blocks for every confirmed workday.
