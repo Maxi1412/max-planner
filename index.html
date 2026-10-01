@@ -436,15 +436,15 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
 const META_KEY='max-planner-meta-v3';
-const VERSION=15;
-const APP_BUILD='PWA 1.6.1';
+const VERSION=16;
+const APP_BUILD='PWA 1.6.2';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
 const MONTHNAMES=['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYNAMES=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 const DEFAULTS=[
-  {id:'d1',start:'09:00',end:'10:00',title:'Walk dog',who:'mine',category:'general'},
+  {id:'d1',start:'09:00',end:'10:00',title:'Walk dog',who:'mine',category:'general',until:'2026-09-30'},
   {id:'d2',start:'10:00',end:'10:30',title:'Breakfast',who:'mine',category:'meal'}
 ];
 
@@ -746,6 +746,16 @@ if(!meta.inmoInterviewOct6Applied){
   meta.inmoInterviewOct6Applied=true;
 }
 
+// Stop dog-walk scheduling from 1 Oct 2026 onward.
+if(!meta.stopDogWalkFromOct1Applied){
+  Object.keys(data).forEach(key=>{
+    if(key<'2026-10-01') return;
+    const dd=dayData(key);
+    dd.appts=dd.appts.filter(a=>!/\b(walk(?:\s+the)?\s+dog|dog\s+needs\s+walk)\b/i.test(String(a.title||'')));
+  });
+  meta.stopDogWalkFromOct1Applied=true;
+}
+
 // Automatically add preparation/travel blocks for every confirmed workday.
 syncAllWorkSupportBlocks();
 
@@ -787,7 +797,12 @@ function mergedAppts(key){
   const dd=dayData(key);
   const removed=dd.removedDefaults||[];
   const disabled=meta.disabledDefaults||[];
-  const defs=DEFAULTS.filter(def=>!disabled.includes(def.id) && !removed.includes(def.id) && !dd.appts.some(a=>normalizeTime(a.start)===def.start && a.title===def.title)).map(def=>({...def,id:def.id+'-'+key,defaultId:def.id,isDefault:true,status:dd.defaultStatus[def.id]||'pending'}));
+  const defs=DEFAULTS.filter(def=>{
+    if(disabled.includes(def.id) || removed.includes(def.id)) return false;
+    if(def.until && key>def.until) return false;
+    if(def.from && key<def.from) return false;
+    return !dd.appts.some(a=>normalizeTime(a.start)===def.start && a.title===def.title);
+  }).map(def=>({...def,id:def.id+'-'+key,defaultId:def.id,isDefault:true,status:dd.defaultStatus[def.id]||'pending'}));
   const rec=recurringForDate(parseIso(key),'appointment').filter(r=>!dd.appts.some(a=>normalizeTime(a.start)===normalizeTime(r.start) && a.title===r.title));
   const all=dd.appts.concat(defs,rec);
   const hasWork=all.some(a=>isWorkAppointment(a) && normalizeTime(a.start)==='19:00' && normalizeTime(a.end)==='23:00' && a.status!=='cancelled');
