@@ -9,6 +9,16 @@
   --bg:#f6f3ec; --card:#ffffff; --ink:#2b2b2b; --sub:#7a7568;
   --line:#e2ddd0; --mine:#0E7490; --mine-bg:#e3f2f6; --mum:#c2410c; --mum-bg:#fdece2;
   --work:#475569; --work-bg:#e2e8f0; --meal:#166534; --meal-bg:#dcfce7; --other:#7e22ce; --other-bg:#f3e8fd;
+  --cat-general:#0e7490; --cat-general-bg:#e3f2f6;
+  --cat-prep:#92400e; --cat-prep-bg:#fef3c7;
+  --cat-travel:#6d28d9; --cat-travel-bg:#ede9fe;
+  --cat-health:#b42318; --cat-health-bg:#feeceb;
+  --cat-admin:#0f766e; --cat-admin-bg:#ccfbf1;
+  --cat-home:#9a3412; --cat-home-bg:#ffedd5;
+  --cat-errand:#0369a1; --cat-errand-bg:#e0f2fe;
+  --cat-social:#9d174d; --cat-social-bg:#fce7f3;
+  --cat-career:#4338ca; --cat-career-bg:#e0e7ff;
+  --cat-meeting:#7e22ce; --cat-meeting-bg:#f3e8ff;
   --accent:#1d4e46; --sticky:#fff6cf; --sticky-border:#e8d98a; --flag:#d97706;
   --header-height:54px;
   --ok:#18794e; --ok-bg:#e5f5ec; --danger:#b42318; --danger-bg:#feeceb;
@@ -20,6 +30,9 @@
     --bg:#181614; --card:#242220; --ink:#f0ede6; --sub:#a39a8a;
     --line:#3a362f; --mine-bg:#123b45; --mum-bg:#3d2115; --sticky:#3a3418; --sticky-border:#5a4f22;
     --work-bg:#2a3138; --meal-bg:#173b2a; --other-bg:#2e1f3d; --ok-bg:#18392a; --danger-bg:#44211f;
+    --cat-general-bg:#123b45; --cat-prep-bg:#4a3514; --cat-travel-bg:#30245a;
+    --cat-health-bg:#44211f; --cat-admin-bg:#153f3b; --cat-home-bg:#4a2818;
+    --cat-errand-bg:#18384c; --cat-social-bg:#4a2035; --cat-career-bg:#292b58; --cat-meeting-bg:#352044;
   }
 }
 :root[data-theme="dark"]{
@@ -139,6 +152,22 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .appt.work{background:var(--work-bg);color:var(--work);font-weight:800;}
 .appt.meal{background:var(--meal-bg);color:var(--meal);font-weight:800;}
 .appt.other{background:var(--other-bg);color:var(--other);}
+
+/* Category / color system: category drives color; "For" is a separate owner label. */
+.preview.cat-general,.weekAppt.cat-general,.appt.cat-general{background:var(--cat-general-bg);color:var(--cat-general);}
+.preview.cat-prep,.weekAppt.cat-prep,.appt.cat-prep{background:var(--cat-prep-bg);color:var(--cat-prep);}
+.preview.cat-travel,.weekAppt.cat-travel,.appt.cat-travel{background:var(--cat-travel-bg);color:var(--cat-travel);}
+.preview.cat-meal,.weekAppt.cat-meal,.appt.cat-meal{background:var(--meal-bg);color:var(--meal);}
+.preview.cat-health,.weekAppt.cat-health,.appt.cat-health{background:var(--cat-health-bg);color:var(--cat-health);}
+.preview.cat-admin,.weekAppt.cat-admin,.appt.cat-admin{background:var(--cat-admin-bg);color:var(--cat-admin);}
+.preview.cat-home,.weekAppt.cat-home,.appt.cat-home{background:var(--cat-home-bg);color:var(--cat-home);}
+.preview.cat-errand,.weekAppt.cat-errand,.appt.cat-errand{background:var(--cat-errand-bg);color:var(--cat-errand);}
+.preview.cat-social,.weekAppt.cat-social,.appt.cat-social{background:var(--cat-social-bg);color:var(--cat-social);}
+.preview.cat-career,.weekAppt.cat-career,.appt.cat-career{background:var(--cat-career-bg);color:var(--cat-career);}
+.preview.cat-meeting,.weekAppt.cat-meeting,.appt.cat-meeting{background:var(--cat-meeting-bg);color:var(--cat-meeting);}
+.preview.cat-work,.weekAppt.cat-work,.appt.cat-work{background:var(--work-bg);color:var(--work);}
+.preview[class*="cat-"],.weekAppt[class*="cat-"],.appt[class*="cat-"]{font-weight:800;}
+
 .appt.flagged{box-shadow:0 0 0 2px var(--flag) inset;}
 .appt.completed{opacity:.6;text-decoration:line-through;}
 .appt.cancelled{opacity:.42;text-decoration:line-through;}
@@ -320,17 +349,29 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
   <label>What</label>
   <input id="fTitle" placeholder="e.g. Lunch with Mum">
   <label>For</label>
-  <div class="who">
-    <button type="button" id="whoMine" class="sel-mine">Me</button>
-    <button type="button" id="whoMum">Mum</button>
-    <button type="button" id="whoWork">Work</button>
-    <button type="button" id="whoOther">Other</button>
-  </div>
-  <label>Type</label>
+  <select id="fWho">
+    <option value="mine">Me</option>
+    <option value="mum">Mum</option>
+    <option value="work">Work</option>
+    <option value="shared">Shared / family</option>
+    <option value="household">Household</option>
+    <option value="other">Other</option>
+  </select>
+  <label>Category / color</label>
   <select id="fCategory">
-    <option value="auto">Auto</option>
-    <option value="general">General</option>
+    <option value="auto">Auto – choose from title</option>
+    <option value="general">General / personal</option>
+    <option value="prep">Preparation / getting ready</option>
+    <option value="travel">Travel / driving</option>
     <option value="meal">Meal / food</option>
+    <option value="health">Health / medical</option>
+    <option value="admin">Admin / paperwork</option>
+    <option value="home">Home / chores / repairs</option>
+    <option value="errand">Errand / shopping</option>
+    <option value="social">Social / personal plans</option>
+    <option value="career">Career / interview</option>
+    <option value="meeting">Meeting / client appointment</option>
+    <option value="work">Work / shift</option>
   </select>
   <label class="flagrow"><input type="checkbox" id="fFlag"> Important / can't forget ★</label>
   <label>Repeat</label>
@@ -376,6 +417,8 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
     <button id="recurringBtn">Recurring items</button>
     <button id="backupBtn">Export backup</button>
     <button id="restoreBtn">Restore backup</button>
+    <button id="safetyBackupBtn">Download safety snapshot</button>
+    <button id="restoreSafetyBtn">Restore safety snapshot</button>
     <button id="installBtn" class="pwaHidden">Install Max Planner</button>
   </div>
   <input id="restoreFile" type="file" accept="application/json,.json" class="hidden">
@@ -403,7 +446,26 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
   <label>Starts on</label>
   <input id="rStartDate" type="date">
   <label>For</label>
-  <select id="rWho"><option value="mine">Me</option><option value="mum">Mum</option><option value="work">Work</option><option value="other">Other</option></select>
+  <select id="rWho">
+    <option value="mine">Me</option><option value="mum">Mum</option><option value="work">Work</option>
+    <option value="shared">Shared / family</option><option value="household">Household</option><option value="other">Other</option>
+  </select>
+  <label>Category / color</label>
+  <select id="rCategory">
+    <option value="auto">Auto – choose from title</option>
+    <option value="general">General / personal</option>
+    <option value="prep">Preparation / getting ready</option>
+    <option value="travel">Travel / driving</option>
+    <option value="meal">Meal / food</option>
+    <option value="health">Health / medical</option>
+    <option value="admin">Admin / paperwork</option>
+    <option value="home">Home / chores / repairs</option>
+    <option value="errand">Errand / shopping</option>
+    <option value="social">Social / personal plans</option>
+    <option value="career">Career / interview</option>
+    <option value="meeting">Meeting / client appointment</option>
+    <option value="work">Work / shift</option>
+  </select>
   <div id="rTimes">
     <div class="form2">
       <div><label>Start</label><select id="rStart"></select></div>
@@ -436,8 +498,9 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
 const META_KEY='max-planner-meta-v3';
-const VERSION=16;
-const APP_BUILD='PWA 1.6.2';
+const SAFETY_BACKUP_KEY='max-planner-safety-pre-category-2026-10-06';
+const VERSION=17;
+const APP_BUILD='PWA 1.7.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -454,6 +517,18 @@ let recurring=[];
 try{ recurring=JSON.parse(localStorage.getItem(RECUR_KEY)||'[]'); }catch(e){ recurring=[]; }
 let meta={disabledDefaults:[]};
 try{ const m=JSON.parse(localStorage.getItem(META_KEY)||'{}'); meta={...meta,...m}; }catch(e){}
+
+// Preserve the exact phone-stored planner state before the category migration runs.
+try{
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY)){
+    localStorage.setItem(SAFETY_BACKUP_KEY,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-category-system safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+}catch(e){}
 if(!Array.isArray(meta.disabledDefaults)) meta.disabledDefaults=[];
 
 function uid(prefix='i'){ return prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); }
@@ -467,22 +542,44 @@ function dayIndex(d){return (d.getDay()+6)%7;}
 function minutes(t){ if(!t) return 99999; const [h,m]=t.split(':').map(Number); return h*60+m; }
 function fmtTime(t){return t||'';}
 function timeRange(a){return a.end && a.end!==a.start ? `${a.start}–${a.end}` : a.start;}
-function whoLabel(w){return ({mine:'Me',mum:'Mum',work:'Work',other:'Other'})[w]||'';}
+const CATEGORY_LABELS={
+  auto:'Auto',general:'General',prep:'Preparation',travel:'Travel',meal:'Meal / food',
+  health:'Health / medical',admin:'Admin / paperwork',home:'Home / chores',
+  errand:'Errand / shopping',social:'Social',career:'Career / interview',
+  meeting:'Meeting / client',work:'Work / shift'
+};
+function whoLabel(w){return ({mine:'Me',mum:'Mum',work:'Work',shared:'Shared / family',household:'Household',other:'Other'})[w]||'';}
 function appointmentRoleSuffix(a){
   const title=String(a?.title||'').toLowerCase();
-  if(a?.who==='mum' && !/\b(mum|mama|mother)\b/.test(title)) return ' · Mum';
-  if(a?.who==='work' && !/\bwork(?:ing)?\b/.test(title)) return ' · Work';
-  if(a?.who==='other' && !/\bother\b/.test(title)) return ' · Other';
-  return '';
+  if(a?.who==='mine' || !a?.who) return '';
+  if(a?.who==='mum' && /\b(mum|mama|mother)\b/.test(title)) return '';
+  if(a?.who==='work' && /\bwork(?:ing)?\b/.test(title)) return '';
+  return ' · '+whoLabel(a.who);
 }
 function isMealTitle(title){
   return /\b(breakfast|brunch|lunch|dinner|supper|meal|snack|coffee|tea|sushi|restaurant|eat|food|cafe|café)\b/i.test(String(title||''));
 }
+function inferAppointmentCategory(a){
+  const title=String(a?.title||'').trim();
+  if(/\b(get ready|getting ready|prepare|preparing|prep)\b/i.test(title)) return 'prep';
+  if(/\b(drive|driving|travel|commute|leave for|go to work|going to work|airport|train|bus|taxi)\b/i.test(title)) return 'travel';
+  if(isMealTitle(title)) return 'meal';
+  if(/\b(doctor|hospital|clinic|chemo|oncolog|medical|dentist|pharmacy|medication|medicine|patch|pflaster|physio|therapy|gym|health)\b/i.test(title)) return 'health';
+  if(/\b(interview|career|job application|cv|resume|résumé)\b/i.test(title)) return 'career';
+  if(/\b(meeting|client|consultation|call|appointment)\b/i.test(title)) return 'meeting';
+  if(/\b(nie|nomina|nómina|paperwork|admin|bank|tax|suma|document|translation|translate|form|passport|residencia)\b/i.test(title)) return 'admin';
+  if(/\b(clean|cleaning|fix|repair|laundry|shower|printer|software|garden|home|house|carpet)\b/i.test(title)) return 'home';
+  if(/\b(shop|shopping|store|supermarket|buy|errand|flyer|flyers|pickup|pick up)\b/i.test(title)) return 'errand';
+  if(/\b(friend|friends|party|social|visit|date night|drinks|outing)\b/i.test(title)) return 'social';
+  if(a?.who==='work' || /\b(work|working|shift|waiter)\b/i.test(title)) return 'work';
+  return 'general';
+}
+function resolvedCategory(a){
+  const cat=String(a?.category||'auto');
+  return cat==='auto' ? inferAppointmentCategory(a) : cat;
+}
 function appointmentVisualClass(a){
-  if(a.who==='mum') return 'mum';
-  if(a.who==='work') return 'work';
-  if(a.category==='meal' || isMealTitle(a.title)) return 'meal';
-  return a.who||'mine';
+  return 'cat-'+resolvedCategory(a);
 }
 function isWorkAppointment(a){
   return a && a.who==='work' && !a.autoWorkSupport && !a.isGeneratedWorkSupport;
@@ -495,12 +592,12 @@ function ensureWorkSupportBlocksForDay(key){
   const work=dd.appts.find(a=>isWorkAppointment(a) && normalizeTime(a.start)==='19:00' && normalizeTime(a.end)==='23:00' && a.status!=='cancelled');
   if(!work) return;
   const wanted=[
-    {start:'18:00',end:'18:30',title:'Get ready for work'},
-    {start:'18:30',end:'19:00',title:'Drive to work'}
+    {start:'18:00',end:'18:30',title:'Get ready for work',category:'prep'},
+    {start:'18:30',end:'19:00',title:'Drive to work',category:'travel'}
   ];
   wanted.forEach(w=>{
     const exists=dd.appts.some(a=>normalizeTime(a.start)===w.start && normalizeTime(a.end)===w.end && String(a.title||'').trim().toLowerCase()===w.title.toLowerCase());
-    if(!exists) dd.appts.push({id:uid('a'),start:w.start,end:w.end,title:w.title,who:'work',category:'general',status:'pending',autoWorkSupport:true});
+    if(!exists) dd.appts.push({id:uid('a'),start:w.start,end:w.end,title:w.title,who:'work',category:w.category,status:'pending',autoWorkSupport:true});
   });
 }
 function removeAutoWorkSupportBlocksForDay(key){
@@ -583,7 +680,6 @@ function migrateDay(dd){
     if(/\s*✓\s*$/.test(originalTitle) && a.status==='pending')a.status='completed';
     a.title=cleanAppointmentTitle(originalTitle);
     if(a.category===undefined)a.category='auto';
-    if(a.who!=='mum' && a.who!=='work' && isMealTitle(a.title))a.category='meal';
   });
   if(!Array.isArray(dd.todos)){
     dd.todos=(dd.todo||'').split('\n').map(x=>x.trim()).filter(Boolean).map(text=>({id:uid('t'),text,status:'pending'}));
@@ -607,7 +703,7 @@ function migrateRecurringItems(){
         if(inferred) r.end=inferred;
       }
       r.title=cleanAppointmentTitle(originalTitle);
-      if(r.who!=='mum' && r.who!=='work' && isMealTitle(r.title))r.category='meal';
+      if(r.category===undefined)r.category='auto';
     }
   });
 }
@@ -756,6 +852,26 @@ if(!meta.stopDogWalkFromOct1Applied){
   meta.stopDogWalkFromOct1Applied=true;
 }
 
+// Category-system migration. Existing entries are preserved; only legacy Auto/General colors are enriched.
+if(!meta.categorySystemV17Applied){
+  Object.keys(data).forEach(key=>{
+    const dd=dayData(key);
+    dd.appts.forEach(a=>{
+      if(!a.category || a.category==='auto' || a.category==='general'){
+        const inferred=inferAppointmentCategory(a);
+        if(inferred!=='general') a.category=inferred;
+      }
+    });
+  });
+  recurring.forEach(r=>{
+    if(r.type==='appointment' && (!r.category || r.category==='auto' || r.category==='general')){
+      const inferred=inferAppointmentCategory(r);
+      if(inferred!=='general') r.category=inferred;
+    }
+  });
+  meta.categorySystemV17Applied=true;
+}
+
 // Automatically add preparation/travel blocks for every confirmed workday.
 syncAllWorkSupportBlocks();
 
@@ -808,8 +924,8 @@ function mergedAppts(key){
   const hasWork=all.some(a=>isWorkAppointment(a) && normalizeTime(a.start)==='19:00' && normalizeTime(a.end)==='23:00' && a.status!=='cancelled');
   if(hasWork){
     const support=[
-      {id:'auto-ready-'+key,start:'18:00',end:'18:30',title:'Get ready for work',who:'work',category:'general',status:'pending',isGeneratedWorkSupport:true},
-      {id:'auto-drive-'+key,start:'18:30',end:'19:00',title:'Drive to work',who:'work',category:'general',status:'pending',isGeneratedWorkSupport:true}
+      {id:'auto-ready-'+key,start:'18:00',end:'18:30',title:'Get ready for work',who:'work',category:'prep',status:'pending',isGeneratedWorkSupport:true},
+      {id:'auto-drive-'+key,start:'18:30',end:'19:00',title:'Drive to work',who:'work',category:'travel',status:'pending',isGeneratedWorkSupport:true}
     ];
     support.forEach(s=>{
       if(!all.some(a=>normalizeTime(a.start)===s.start && normalizeTime(a.end)===s.end && String(a.title||'').trim().toLowerCase()===s.title.toLowerCase())) all.push(s);
@@ -1055,7 +1171,11 @@ fillTimeSelect(document.getElementById('fStart'),false);fillTimeSelect(document.
 fillTimeSelect(document.getElementById('rStart'),false);fillTimeSelect(document.getElementById('rEnd'),true);
 
 function normalizeTime(t){if(!t)return'';const [h,m]=t.split(':');return String(Number(h)).padStart(2,'0')+':'+String(Number(m||0)).padStart(2,'0');}
-function setWho(w){whoSel=w||'mine';['mine','mum','work','other'].forEach(x=>document.getElementById('who'+x[0].toUpperCase()+x.slice(1)).className=whoSel===x?'sel-'+x:'');}
+function setWho(w){
+  whoSel=w||'mine';
+  const sel=document.getElementById('fWho');
+  if(sel) sel.value=whoSel;
+}
 
 function openAppointmentModal(a,key,defaultStart){
   editingAppt=a||null;editingApptKey=key||iso(current);editingSeriesId=null;
@@ -1116,8 +1236,7 @@ function saveAppointmentFromModal(){
   const {title,date,start,end}=v;
   const repeat=document.getElementById('fRepeat').value;
   const flag=document.getElementById('fFlag').checked;
-  let category=document.getElementById('fCategory').value||'auto';
-  if(whoSel!=='mum' && whoSel!=='work' && isMealTitle(title))category='meal';
+  const category=document.getElementById('fCategory').value||'auto';
   const interval=repeat==='interval'?Math.max(2,Number(document.getElementById('fInterval').value)||3):undefined;
 
   if(pendingReschedule){
@@ -1169,7 +1288,7 @@ document.getElementById('apptSave').addEventListener('click',saveAppointmentFrom
 document.getElementById('apptCancel').onclick=()=>{pendingReschedule=null;clearApptError();document.getElementById('apptModal').classList.remove('open');};
 document.getElementById('fRepeat').onchange=e=>document.getElementById('repeatEveryWrap').classList.toggle('hidden',e.target.value!=='interval');
 document.getElementById('fTitle').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveAppointmentFromModal();}});
-['Mine','Mum','Work','Other'].forEach(name=>document.getElementById('who'+name).onclick=()=>setWho(name.toLowerCase()));
+document.getElementById('fWho').onchange=e=>setWho(e.target.value);
 
 function setAppointmentStatus(a,key,status){
   const dd=dayData(key);
@@ -1258,7 +1377,7 @@ function renderRecurringManager(){
   if(!recurring.length){list.innerHTML='<div class="emptyMsg">No recurring items</div>';return;}
   recurring.forEach(r=>{
     const el=document.createElement('div');el.className='recItem';
-    el.innerHTML=`<strong>${escapeHtml(r.title)}</strong><small>${r.type==='appointment'?(r.start+(r.end?'–'+r.end:'')+' · '):''}${whoLabel(r.who)} · ${repeatLabel(r)}</small><div class="recActions"><button>Edit</button><button>Delete</button></div>`;
+    el.innerHTML=`<strong>${escapeHtml(r.title)}</strong><small>${r.type==='appointment'?(r.start+(r.end?'–'+r.end:'')+' · '):''}${whoLabel(r.who)} · ${CATEGORY_LABELS[resolvedCategory(r)]||'General'} · ${repeatLabel(r)}</small><div class="recActions"><button>Edit</button><button>Delete</button></div>`;
     const [edit,del]=el.querySelectorAll('button');edit.onclick=()=>openRecurringEditor(r);del.onclick=()=>{recurring=recurring.filter(x=>x.id!==r.id);save();renderRecurringManager();render();};
     list.appendChild(el);
   });
@@ -1270,6 +1389,7 @@ function openRecurringEditor(r=null){
   document.getElementById('rTitle').value=r?.title||'';
   document.getElementById('rStartDate').value=r?.startDate||iso(current);
   document.getElementById('rWho').value=r?.who||'mum';
+  document.getElementById('rCategory').value=r?.category||'auto';
   document.getElementById('rStart').value=normalizeTime(r?.start||'09:00');
   document.getElementById('rEnd').value=normalizeTime(r?.end||'');
   document.getElementById('rRepeat').value=r?.repeat||'interval';
@@ -1292,12 +1412,40 @@ document.getElementById('rSave').onclick=()=>{
   const rEnd=normalizeTime(document.getElementById('rEnd').value);
   if(rType==='appointment' && rEnd && minutes(rEnd)<=minutes(rStart)){alert('End time must be later than the start time.');return;}
   const existingRec=recEditingId?recurring.find(x=>x.id===recEditingId):null;
-  const obj={id:recEditingId||uid('r'),type:rType,title,startDate:document.getElementById('rStartDate').value||iso(current),who:document.getElementById('rWho').value,category:existingRec?.category||'auto',start:rType==='appointment'?rStart:'',end:rType==='appointment'?rEnd:'',repeat:document.getElementById('rRepeat').value,interval:document.getElementById('rRepeat').value==='interval'?Math.max(2,Number(document.getElementById('rInterval').value)||3):undefined,flag:document.getElementById('rFlag').checked};
+  const obj={id:recEditingId||uid('r'),type:rType,title,startDate:document.getElementById('rStartDate').value||iso(current),who:document.getElementById('rWho').value,category:document.getElementById('rCategory').value||'auto',start:rType==='appointment'?rStart:'',end:rType==='appointment'?rEnd:'',repeat:document.getElementById('rRepeat').value,interval:document.getElementById('rRepeat').value==='interval'?Math.max(2,Number(document.getElementById('rInterval').value)||3):undefined,flag:document.getElementById('rFlag').checked};
   if(recEditingId)recurring=recurring.map(x=>x.id===recEditingId?obj:x);else recurring.push(obj);
   save();document.getElementById('recEditModal').classList.remove('open');document.getElementById('recurringModal').classList.add('open');renderRecurringManager();render();
 };
 
 // Backup / restore
+function downloadSafetyBackup(){
+  try{
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY);
+    if(!raw){alert('No safety snapshot is available on this device.');return;}
+    const blob=new Blob([raw],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-category-2026-10-06.json';
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(e){alert('Could not download the safety snapshot.');}
+}
+function restoreSafetyBackup(){
+  try{
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY);
+    if(!raw){alert('No safety snapshot is available on this device.');return;}
+    if(!confirm('Restore the pre-category safety snapshot? Current planner data will be replaced by that snapshot.')) return;
+    const p=JSON.parse(raw);
+    data=p.data&&typeof p.data==='object'?p.data:{};
+    recurring=Array.isArray(p.recurring)?p.recurring:[];
+    meta=p.meta&&typeof p.meta==='object'?p.meta:{disabledDefaults:[]};
+    if(!Array.isArray(meta.disabledDefaults))meta.disabledDefaults=[];
+    Object.keys(data).forEach(k=>migrateDay(data[k]));
+    migrateRecurringItems();
+    syncAllWorkSupportBlocks();
+    save();render();
+    document.getElementById('menuModal').classList.remove('open');
+    alert('Safety snapshot restored.');
+  }catch(e){alert('Could not restore the safety snapshot.');}
+}
 function exportBackup(){
   const payload={app:'Max Planner',version:VERSION,exportedAt:new Date().toISOString(),data,recurring,meta};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);
@@ -1380,6 +1528,8 @@ document.getElementById('menuClose').onclick=()=>document.getElementById('menuMo
 document.getElementById('printWeekBtn').onclick=openPrintPreview;
 document.getElementById('backupBtn').onclick=()=>{exportBackup();document.getElementById('menuModal').classList.remove('open');};
 document.getElementById('restoreBtn').onclick=()=>document.getElementById('restoreFile').click();
+document.getElementById('safetyBackupBtn').onclick=downloadSafetyBackup;
+document.getElementById('restoreSafetyBtn').onclick=restoreSafetyBackup;
 document.getElementById('restoreFile').onchange=e=>{if(e.target.files?.[0])restoreBackup(e.target.files[0]);e.target.value='';};
 document.getElementById('recurringBtn').onclick=()=>{document.getElementById('menuModal').classList.remove('open');renderRecurringManager();document.getElementById('recurringModal').classList.add('open');};
 document.getElementById('recClose').onclick=()=>document.getElementById('recurringModal').classList.remove('open');
