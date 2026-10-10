@@ -19,6 +19,22 @@
   --cat-social:#9d174d; --cat-social-bg:#fce7f3;
   --cat-career:#4338ca; --cat-career-bg:#e0e7ff;
   --cat-meeting:#7e22ce; --cat-meeting-bg:#f3e8ff;
+  --pal-sky:#0369a1; --pal-sky-bg:#e0f2fe;
+  --pal-blue:#1d4ed8; --pal-blue-bg:#dbeafe;
+  --pal-navy:#1e3a8a; --pal-navy-bg:#c7d2fe;
+  --pal-aqua:#0e7490; --pal-aqua-bg:#cffafe;
+  --pal-teal:#0f766e; --pal-teal-bg:#ccfbf1;
+  --pal-mint:#166534; --pal-mint-bg:#dcfce7;
+  --pal-lime:#4d7c0f; --pal-lime-bg:#ecfccb;
+  --pal-yellow:#854d0e; --pal-yellow-bg:#fef9c3;
+  --pal-amber:#92400e; --pal-amber-bg:#fef3c7;
+  --pal-orange:#9a3412; --pal-orange-bg:#ffedd5;
+  --pal-coral:#be123c; --pal-coral-bg:#ffe4e6;
+  --pal-pink:#9d174d; --pal-pink-bg:#fce7f3;
+  --pal-lavender:#6d28d9; --pal-lavender-bg:#ede9fe;
+  --pal-purple:#7e22ce; --pal-purple-bg:#f3e8ff;
+  --pal-indigo:#4338ca; --pal-indigo-bg:#e0e7ff;
+  --pal-slate:#475569; --pal-slate-bg:#e2e8f0;
   --accent:#1d4e46; --sticky:#fff6cf; --sticky-border:#e8d98a; --flag:#d97706;
   --header-height:54px;
   --ok:#18794e; --ok-bg:#e5f5ec; --danger:#b42318; --danger-bg:#feeceb;
@@ -167,6 +183,31 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .preview.cat-meeting,.weekAppt.cat-meeting,.appt.cat-meeting{background:var(--cat-meeting-bg);color:var(--cat-meeting);}
 .preview.cat-work,.weekAppt.cat-work,.appt.cat-work{background:var(--work-bg);color:var(--work);}
 .preview[class*="cat-"],.weekAppt[class*="cat-"],.appt[class*="cat-"]{font-weight:800;}
+
+.preview.color-sky,.weekAppt.color-sky,.appt.color-sky{background:var(--pal-sky-bg);color:var(--pal-sky);}
+.preview.color-blue,.weekAppt.color-blue,.appt.color-blue{background:var(--pal-blue-bg);color:var(--pal-blue);}
+.preview.color-navy,.weekAppt.color-navy,.appt.color-navy{background:var(--pal-navy-bg);color:var(--pal-navy);}
+.preview.color-aqua,.weekAppt.color-aqua,.appt.color-aqua{background:var(--pal-aqua-bg);color:var(--pal-aqua);}
+.preview.color-teal,.weekAppt.color-teal,.appt.color-teal{background:var(--pal-teal-bg);color:var(--pal-teal);}
+.preview.color-mint,.weekAppt.color-mint,.appt.color-mint{background:var(--pal-mint-bg);color:var(--pal-mint);}
+.preview.color-lime,.weekAppt.color-lime,.appt.color-lime{background:var(--pal-lime-bg);color:var(--pal-lime);}
+.preview.color-yellow,.weekAppt.color-yellow,.appt.color-yellow{background:var(--pal-yellow-bg);color:var(--pal-yellow);}
+.preview.color-amber,.weekAppt.color-amber,.appt.color-amber{background:var(--pal-amber-bg);color:var(--pal-amber);}
+.preview.color-orange,.weekAppt.color-orange,.appt.color-orange{background:var(--pal-orange-bg);color:var(--pal-orange);}
+.preview.color-coral,.weekAppt.color-coral,.appt.color-coral{background:var(--pal-coral-bg);color:var(--pal-coral);}
+.preview.color-pink,.weekAppt.color-pink,.appt.color-pink{background:var(--pal-pink-bg);color:var(--pal-pink);}
+.preview.color-lavender,.weekAppt.color-lavender,.appt.color-lavender{background:var(--pal-lavender-bg);color:var(--pal-lavender);}
+.preview.color-purple,.weekAppt.color-purple,.appt.color-purple{background:var(--pal-purple-bg);color:var(--pal-purple);}
+.preview.color-indigo,.weekAppt.color-indigo,.appt.color-indigo{background:var(--pal-indigo-bg);color:var(--pal-indigo);}
+.preview.color-slate,.weekAppt.color-slate,.appt.color-slate{background:var(--pal-slate-bg);color:var(--pal-slate);}
+
+.colorPalette{display:flex;flex-wrap:wrap;gap:8px;margin-top:7px;}
+.colorChoice{width:34px;height:34px;border-radius:50%;border:2px solid transparent;padding:0;box-shadow:0 0 0 1px var(--line);}
+.colorChoice.selected{border-color:var(--ink);box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--ink);}
+.colorChoice.autoChoice{width:auto;min-width:58px;border-radius:17px;padding:0 10px;background:var(--bg);color:var(--ink);font-size:11px;font-weight:800;}
+.colorHint,.nativeTimeHint{font-size:11px;color:var(--sub);margin-top:5px;}
+.slot .time{cursor:pointer;}
+.hourPlus{display:block;font-size:15px;line-height:1;margin-top:5px;color:var(--accent);font-weight:900;}
 
 .appt.flagged{box-shadow:0 0 0 2px var(--flag) inset;}
 .appt.completed{opacity:.6;text-decoration:line-through;}
@@ -343,9 +384,10 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
   <label>Date</label>
   <input id="fDate" type="date">
   <div class="form2">
-    <div><label>Start</label><select id="fStart"></select></div>
-    <div><label>End (optional)</label><select id="fEnd"></select></div>
+    <div><label>Start</label><input id="fStart" type="time" step="900" required></div>
+    <div><label>End (optional)</label><input id="fEnd" type="time" step="900"></div>
   </div>
+  <div class="nativeTimeHint">Tap the time to use your phone's native time picker.</div>
   <label>What</label>
   <input id="fTitle" placeholder="e.g. Lunch with Mum">
   <label>For</label>
@@ -357,7 +399,7 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
     <option value="household">Household</option>
     <option value="other">Other</option>
   </select>
-  <label>Category / color</label>
+  <label>Main category</label>
   <select id="fCategory">
     <option value="auto">Auto – choose from title</option>
     <option value="general">General / personal</option>
@@ -373,6 +415,12 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
     <option value="meeting">Meeting / client appointment</option>
     <option value="work">Work / shift</option>
   </select>
+  <label>Activity / subcategory</label>
+  <select id="fSubcategory"></select>
+  <label>Color</label>
+  <input id="fColorKey" type="hidden" value="auto">
+  <div id="fColorPalette" class="colorPalette"></div>
+  <div id="fColorHint" class="colorHint">Automatic color based on who + activity</div>
   <label class="flagrow"><input type="checkbox" id="fFlag"> Important / can't forget ★</label>
   <label>Repeat</label>
   <select id="fRepeat">
@@ -450,7 +498,7 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
     <option value="mine">Me</option><option value="mum">Mum</option><option value="work">Work</option>
     <option value="shared">Shared / family</option><option value="household">Household</option><option value="other">Other</option>
   </select>
-  <label>Category / color</label>
+  <label>Main category</label>
   <select id="rCategory">
     <option value="auto">Auto – choose from title</option>
     <option value="general">General / personal</option>
@@ -466,10 +514,16 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
     <option value="meeting">Meeting / client appointment</option>
     <option value="work">Work / shift</option>
   </select>
+  <label>Activity / subcategory</label>
+  <select id="rSubcategory"></select>
+  <label>Color</label>
+  <input id="rColorKey" type="hidden" value="auto">
+  <div id="rColorPalette" class="colorPalette"></div>
+  <div id="rColorHint" class="colorHint">Automatic color based on who + activity</div>
   <div id="rTimes">
     <div class="form2">
-      <div><label>Start</label><select id="rStart"></select></div>
-      <div><label>End (optional)</label><select id="rEnd"></select></div>
+      <div><label>Start</label><input id="rStart" type="time" step="900"></div>
+      <div><label>End (optional)</label><input id="rEnd" type="time" step="900"></div>
     </div>
   </div>
   <label>Repeat</label>
@@ -499,8 +553,9 @@ const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
 const META_KEY='max-planner-meta-v3';
 const SAFETY_BACKUP_KEY='max-planner-safety-pre-category-2026-10-06';
-const VERSION=17;
-const APP_BUILD='PWA 1.7.0';
+const SAFETY_BACKUP_KEY_V18='max-planner-safety-pre-flexible-ui-2026-10-10';
+const VERSION=18;
+const APP_BUILD='PWA 1.8.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -518,12 +573,20 @@ try{ recurring=JSON.parse(localStorage.getItem(RECUR_KEY)||'[]'); }catch(e){ rec
 let meta={disabledDefaults:[]};
 try{ const m=JSON.parse(localStorage.getItem(META_KEY)||'{}'); meta={...meta,...m}; }catch(e){}
 
-// Preserve the exact phone-stored planner state before the category migration runs.
+// Preserve the exact phone-stored planner state before migrations or new UI fields touch it.
 try{
   if(!localStorage.getItem(SAFETY_BACKUP_KEY)){
     localStorage.setItem(SAFETY_BACKUP_KEY,JSON.stringify({
       app:'Max Planner',
       snapshot:'Pre-category-system safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V18)){
+    localStorage.setItem(SAFETY_BACKUP_KEY_V18,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-flexible-category/time-picker safety backup',
       createdAt:new Date().toISOString(),
       data,recurring,meta
     }));
@@ -576,10 +639,12 @@ function inferAppointmentCategory(a){
 }
 function resolvedCategory(a){
   const cat=String(a?.category||'auto');
-  return cat==='auto' ? inferAppointmentCategory(a) : cat;
+  if(cat!=='auto') return cat;
+  const sub=(a?.subcategory&&a.subcategory!=='auto')?a.subcategory:inferSubcategory(a);
+  return categoryFromSubcategory(sub)||inferAppointmentCategory(a);
 }
 function appointmentVisualClass(a){
-  return 'cat-'+resolvedCategory(a);
+  return 'cat-'+resolvedCategory(a)+' color-'+resolvedColorKey(a);
 }
 function isWorkAppointment(a){
   return a && a.who==='work' && !a.autoWorkSupport && !a.isGeneratedWorkSupport;
@@ -597,7 +662,7 @@ function ensureWorkSupportBlocksForDay(key){
   ];
   wanted.forEach(w=>{
     const exists=dd.appts.some(a=>normalizeTime(a.start)===w.start && normalizeTime(a.end)===w.end && String(a.title||'').trim().toLowerCase()===w.title.toLowerCase());
-    if(!exists) dd.appts.push({id:uid('a'),start:w.start,end:w.end,title:w.title,who:'work',category:w.category,status:'pending',autoWorkSupport:true});
+    if(!exists) dd.appts.push({id:uid('a'),start:w.start,end:w.end,title:w.title,who:'work',category:w.category,subcategory:w.category==='prep'?'prep':'commute',colorKey:'auto',status:'pending',autoWorkSupport:true});
   });
 }
 function removeAutoWorkSupportBlocksForDay(key){
@@ -906,7 +971,7 @@ function recurringForDate(d,type){
   const key=iso(d); const dd=dayData(key);
   return recurring.filter(r=>r.type===type && recurrenceDue(r,d) && !dd.recurringHidden[r.id]).map(r=>({
     id:'rec-'+r.id+'-'+key,seriesId:r.id,isRecurring:true,title:r.title,who:r.who||'mine',flag:!!r.flag,
-    start:r.start||'',end:r.end||'',category:r.category||'auto',status:dd.recurringStatus[r.id]||'pending'
+    start:r.start||'',end:r.end||'',category:r.category||'auto',subcategory:r.subcategory||'auto',colorKey:r.colorKey||'auto',status:dd.recurringStatus[r.id]||'pending'
   }));
 }
 function mergedAppts(key){
@@ -924,8 +989,8 @@ function mergedAppts(key){
   const hasWork=all.some(a=>isWorkAppointment(a) && normalizeTime(a.start)==='19:00' && normalizeTime(a.end)==='23:00' && a.status!=='cancelled');
   if(hasWork){
     const support=[
-      {id:'auto-ready-'+key,start:'18:00',end:'18:30',title:'Get ready for work',who:'work',category:'prep',status:'pending',isGeneratedWorkSupport:true},
-      {id:'auto-drive-'+key,start:'18:30',end:'19:00',title:'Drive to work',who:'work',category:'travel',status:'pending',isGeneratedWorkSupport:true}
+      {id:'auto-ready-'+key,start:'18:00',end:'18:30',title:'Get ready for work',who:'work',category:'prep',subcategory:'prep',colorKey:'auto',status:'pending',isGeneratedWorkSupport:true},
+      {id:'auto-drive-'+key,start:'18:30',end:'19:00',title:'Drive to work',who:'work',category:'travel',subcategory:'commute',colorKey:'auto',status:'pending',isGeneratedWorkSupport:true}
     ];
     support.forEach(s=>{
       if(!all.some(a=>normalizeTime(a.start)===s.start && normalizeTime(a.end)===s.end && String(a.title||'').trim().toLowerCase()===s.title.toLowerCase())) all.push(s);
@@ -1021,7 +1086,9 @@ function renderDay(){
   const appts=mergedAppts(key);
   VISUAL_HOURS.forEach(h=>{
     const row=document.createElement('div');row.className='slot';
-    const t=document.createElement('div');t.className='time';t.textContent=pad(h)+':00';
+    const t=document.createElement('div');t.className='time';t.innerHTML='<span>'+pad(h)+':00</span><span class="hourPlus">＋</span>';
+    t.title='Add appointment at '+pad(h)+':00';
+    t.onclick=()=>openAppointmentModal(null,key,pad(h)+':00');
     const b=document.createElement('div');b.className='body';
     const hourStart=h*60, hourEnd=hourStart+60;
     const hourOccupied=appts.some(a=>{
@@ -1163,18 +1230,72 @@ function attachLongPress(el,onLong,onTap){
   });
 }
 
-function fillTimeSelect(sel,allowBlank=true){
-  sel.innerHTML='';
-  TIME_OPTIONS.forEach(t=>{if(!allowBlank&&!t)return;const o=document.createElement('option');o.value=t;o.textContent=t||'—';sel.appendChild(o);});
+const OWNER_SUBCATEGORIES={
+  mine:[['auto','Auto from title'],['personal','Personal / general'],['prep','Preparation / getting ready'],['travel','Travel / driving'],['meal','Food / meal'],['fitness','Sport / fitness'],['personal-care','Personal care / haircut'],['home','Home / chores'],['shopping','Shopping / errands'],['social','Social / friends'],['leisure','Free time / leisure'],['career','Career / interview'],['admin','Admin / paperwork'],['meeting','Meeting / appointment'],['work-related','Work-related task']],
+  mum:[['auto','Auto from title'],['medical','Medical / doctor'],['medication','Medication / treatment'],['admin','Admin / paperwork'],['shopping','Shopping / errands'],['meal','Lunch / dinner / food'],['social','Social / visit'],['home','House / chores'],['travel','Travel / driving'],['personal-care','Personal care'],['fitness','Exercise / gym'],['appointment','Appointment'],['general','General']],
+  work:[['auto','Auto from title'],['shift','Work shift'],['prep','Preparation'],['commute','Commute / travel'],['meeting','Meeting / client'],['admin','Admin'],['training','Training'],['career','Interview / career'],['meal','Work meal'],['general','Other work']],
+  shared:[['auto','Auto from title'],['meal','Meal / food'],['shopping','Shopping'],['home','Home / chores'],['travel','Travel'],['social','Visit / social'],['appointment','Appointment'],['admin','Admin'],['leisure','Leisure / outing'],['general','General']],
+  household:[['auto','Auto from title'],['cleaning','Cleaning'],['repair','Repair / maintenance'],['supplies','Supplies / shopping'],['bills','Bills / household admin'],['garden','Garden / outside'],['admin','Admin'],['general','General']],
+  other:[['auto','Auto from title'],['general','General'],['travel','Travel'],['meeting','Meeting'],['meal','Meal / food'],['social','Social'],['errand','Errand'],['admin','Admin']]
+};
+const COLOR_PALETTE=[
+  ['auto','Auto','var(--bg)','var(--ink)'],['sky','Sky','var(--pal-sky-bg)','var(--pal-sky)'],['blue','Blue','var(--pal-blue-bg)','var(--pal-blue)'],['navy','Deep blue','var(--pal-navy-bg)','var(--pal-navy)'],['aqua','Aqua','var(--pal-aqua-bg)','var(--pal-aqua)'],['teal','Teal','var(--pal-teal-bg)','var(--pal-teal)'],['mint','Mint','var(--pal-mint-bg)','var(--pal-mint)'],['lime','Lime','var(--pal-lime-bg)','var(--pal-lime)'],['yellow','Yellow','var(--pal-yellow-bg)','var(--pal-yellow)'],['amber','Amber','var(--pal-amber-bg)','var(--pal-amber)'],['orange','Peach','var(--pal-orange-bg)','var(--pal-orange)'],['coral','Coral','var(--pal-coral-bg)','var(--pal-coral)'],['pink','Pink','var(--pal-pink-bg)','var(--pal-pink)'],['lavender','Lavender','var(--pal-lavender-bg)','var(--pal-lavender)'],['purple','Purple','var(--pal-purple-bg)','var(--pal-purple)'],['indigo','Indigo','var(--pal-indigo-bg)','var(--pal-indigo)'],['slate','Slate','var(--pal-slate-bg)','var(--pal-slate)']
+];
+function categoryFromSubcategory(s){
+  return ({prep:'prep',commute:'travel',travel:'travel',meal:'meal',medical:'health',medication:'health',fitness:'health','personal-care':'social',admin:'admin',bills:'admin',home:'home',cleaning:'home',repair:'home',garden:'home',shopping:'errand',supplies:'errand',errand:'errand',social:'social',leisure:'social',career:'career',meeting:'meeting',appointment:'meeting',training:'work',shift:'work','work-related':'work',personal:'general',general:'general'})[s]||'general';
 }
-fillTimeSelect(document.getElementById('fStart'),false);fillTimeSelect(document.getElementById('fEnd'),true);
-fillTimeSelect(document.getElementById('rStart'),false);fillTimeSelect(document.getElementById('rEnd'),true);
-
+function inferSubcategory(a){
+  const title=String(a?.title||'').toLowerCase(),who=a?.who||'mine';
+  if(/\b(get ready|getting ready|prepare|preparing|prep)\b/.test(title)) return 'prep';
+  if(/\b(drive|driving|travel|commute|leave for|go to work|going to work|airport|train|bus|taxi)\b/.test(title)) return who==='work'?'commute':'travel';
+  if(/\b(breakfast|brunch|lunch|dinner|supper|meal|snack|coffee|tea|sushi|restaurant|eat|food|cafe|café)\b/.test(title)) return 'meal';
+  if(/\b(doctor|hospital|clinic|chemo|oncolog|medical|dentist|pharmacy|physio|therapy)\b/.test(title)) return who==='mum'?'medical':'fitness';
+  if(/\b(medication|medicine|patch|pflaster|treatment)\b/.test(title)) return who==='mum'?'medication':'fitness';
+  if(/\b(gym|sport|fitness|exercise|workout|swim|walk)\b/.test(title)) return 'fitness';
+  if(/\b(haircut|hair|nails|barber|beauty|personal care)\b/.test(title)) return 'personal-care';
+  if(/\b(interview|career|job application|cv|resume|résumé)\b/.test(title)) return 'career';
+  if(/\b(meeting|client|consultation|call|appointment|visit)\b/.test(title)) return who==='mum'?'appointment':'meeting';
+  if(/\b(nie|nomina|nómina|paperwork|admin|bank|tax|suma|document|translation|translate|form|passport|residencia)\b/.test(title)) return 'admin';
+  if(/\b(clean|cleaning)\b/.test(title)) return who==='household'?'cleaning':'home';
+  if(/\b(fix|repair|maintenance|shower|printer|software)\b/.test(title)) return who==='household'?'repair':'home';
+  if(/\b(garden|outside|yard)\b/.test(title)) return who==='household'?'garden':'home';
+  if(/\b(shop|shopping|store|supermarket|buy|errand|flyer|flyers|pickup|pick up)\b/.test(title)) return who==='household'?'supplies':'shopping';
+  if(/\b(friend|friends|party|social|drinks|outing|date night)\b/.test(title)) return 'social';
+  if(/\b(free time|leisure|relax|movie|cinema|beach)\b/.test(title)) return 'leisure';
+  if(a?.who==='work' || /\b(work|working|shift|waiter)\b/.test(title)) return 'shift';
+  return who==='mine'?'personal':'general';
+}
+function populateSubcategorySelect(selectId,who,selected='auto'){
+  const sel=document.getElementById(selectId);if(!sel)return;
+  const opts=OWNER_SUBCATEGORIES[who]||OWNER_SUBCATEGORIES.other;sel.innerHTML='';
+  opts.forEach(([value,label])=>{const o=document.createElement('option');o.value=value;o.textContent=label;sel.appendChild(o);});
+  sel.value=opts.some(x=>x[0]===selected)?selected:'auto';
+}
+function defaultColorKey(a){
+  const who=a?.who||'mine',sub=(a?.subcategory&&a.subcategory!=='auto')?a.subcategory:inferSubcategory(a);
+  const m={
+    mine:{personal:'sky',prep:'yellow',travel:'lavender',meal:'mint',fitness:'lime','personal-care':'pink',home:'orange',shopping:'aqua',social:'pink',leisure:'yellow',career:'indigo',admin:'teal',meeting:'purple','work-related':'navy',general:'sky'},
+    mum:{medical:'coral',medication:'coral',admin:'lavender',shopping:'aqua',meal:'orange',social:'pink',home:'amber',travel:'purple','personal-care':'pink',fitness:'lime',appointment:'purple',general:'coral'},
+    work:{shift:'slate',prep:'yellow',commute:'purple',meeting:'indigo',admin:'teal',training:'sky',career:'navy',meal:'mint',general:'slate'},
+    shared:{meal:'mint',shopping:'aqua',home:'amber',travel:'lavender',social:'pink',appointment:'purple',admin:'teal',leisure:'yellow',general:'blue'},
+    household:{cleaning:'amber',repair:'coral',supplies:'aqua',bills:'teal',garden:'lime',admin:'teal',general:'orange'},
+    other:{general:'blue',travel:'lavender',meeting:'purple',meal:'mint',social:'pink',errand:'aqua',admin:'teal'}
+  };
+  return m[who]?.[sub]||'sky';
+}
+function resolvedColorKey(a){const k=String(a?.colorKey||'auto');return k!=='auto'?k:defaultColorKey(a);}
+function renderColorPalette(containerId,inputId,hintId,selected='auto'){
+  const box=document.getElementById(containerId),input=document.getElementById(inputId),hint=document.getElementById(hintId);if(!box||!input)return;
+  input.value=selected||'auto';box.innerHTML='';
+  COLOR_PALETTE.forEach(([key,label,bg,fg])=>{const b=document.createElement('button');b.type='button';b.className='colorChoice'+(key==='auto'?' autoChoice':'');if(key==='auto')b.textContent='Auto';else{b.style.background=bg;b.style.color=fg;b.title=label;b.setAttribute('aria-label',label);}if(input.value===key)b.classList.add('selected');b.onclick=()=>{input.value=key;[...box.children].forEach(x=>x.classList.remove('selected'));b.classList.add('selected');if(hint)hint.textContent=key==='auto'?'Automatic color based on who + activity':label;};box.appendChild(b);});
+  if(hint)hint.textContent=input.value==='auto'?'Automatic color based on who + activity':(COLOR_PALETTE.find(x=>x[0]===input.value)?.[1]||'Custom color');
+}
 function normalizeTime(t){if(!t)return'';const [h,m]=t.split(':');return String(Number(h)).padStart(2,'0')+':'+String(Number(m||0)).padStart(2,'0');}
-function setWho(w){
+function setWho(w,selectedSubcategory){
   whoSel=w||'mine';
   const sel=document.getElementById('fWho');
   if(sel) sel.value=whoSel;
+  populateSubcategorySelect('fSubcategory',whoSel,selectedSubcategory||'auto');
 }
 
 function openAppointmentModal(a,key,defaultStart){
@@ -1196,7 +1317,10 @@ function openAppointmentModal(a,key,defaultStart){
   document.getElementById('fRepeat').value=repeat;
   document.getElementById('fInterval').value=source?.interval||3;
   document.getElementById('repeatEveryWrap').classList.toggle('hidden',repeat!=='interval');
-  setWho(source?.who||'mine');
+  const owner=source?.who||'mine';
+  const inferredSub=source?.subcategory||inferSubcategory({...source,who:owner})||'auto';
+  setWho(owner,inferredSub);
+  renderColorPalette('fColorPalette','fColorKey','fColorHint',source?.colorKey||'auto');
   document.getElementById('fRepeat').disabled=false;
   clearApptError();
   const modal=document.getElementById('apptModal');
@@ -1237,6 +1361,8 @@ function saveAppointmentFromModal(){
   const repeat=document.getElementById('fRepeat').value;
   const flag=document.getElementById('fFlag').checked;
   const category=document.getElementById('fCategory').value||'auto';
+  const subcategory=document.getElementById('fSubcategory').value||'auto';
+  const colorKey=document.getElementById('fColorKey').value||'auto';
   const interval=repeat==='interval'?Math.max(2,Number(document.getElementById('fInterval').value)||3):undefined;
 
   if(pendingReschedule){
@@ -1247,15 +1373,15 @@ function saveAppointmentFromModal(){
       const original=dayData(ctx.key).appts.find(x=>x.id===ctx.id);
       if(original) original.status='cancelled';
     }
-    const clean={id:uid('a'),start,end,title,who:whoSel,category,flag,status:'pending'};
+    const clean={id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,flag,status:'pending'};
     dayData(date).appts.push(clean);
     pendingReschedule=null;editingAppt=null;editingApptKey=null;editingSeriesId=null;
   }else if(editingSeriesId){
     if(repeat==='none'){
       recurring=recurring.filter(x=>x.id!==editingSeriesId);
-      dayData(date).appts.push({id:uid('a'),start,end,title,who:whoSel,category,flag,status:'pending'});
+      dayData(date).appts.push({id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,flag,status:'pending'});
     }else{
-      recurring=recurring.map(r=>r.id===editingSeriesId?{...r,type:'appointment',title,who:whoSel,category,flag,startDate:date,start,end,repeat,interval}:r);
+      recurring=recurring.map(r=>r.id===editingSeriesId?{...r,type:'appointment',title,who:whoSel,category,subcategory,colorKey,flag,startDate:date,start,end,repeat,interval}:r);
     }
   }else if(editingAppt){
     const old=dayData(editingApptKey);
@@ -1267,16 +1393,15 @@ function saveAppointmentFromModal(){
       old.appts=old.appts.filter(x=>x.id!==editingAppt.id);
     }
     if(repeat==='none'){
-      dayData(date).appts.push({id:editingAppt.isDefault?uid('a'):editingAppt.id,start,end,title,who:whoSel,category,flag,status:editingAppt.status||'pending'});
+      dayData(date).appts.push({id:editingAppt.isDefault?uid('a'):editingAppt.id,start,end,title,who:whoSel,category,subcategory,colorKey,flag,status:editingAppt.status||'pending'});
     }else{
-      recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,flag,startDate:date,start,end,repeat,interval});
+      recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,subcategory,colorKey,flag,startDate:date,start,end,repeat,interval});
     }
   }else if(repeat!=='none'){
-    recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,flag,startDate:date,start,end,repeat,interval});
+    recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,subcategory,colorKey,flag,startDate:date,start,end,repeat,interval});
   }else{
-    dayData(date).appts.push({id:uid('a'),start,end,title,who:whoSel,category,flag,status:'pending'});
+    dayData(date).appts.push({id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,flag,status:'pending'});
   }
-  // Keep work preparation/travel blocks synchronized whenever a work appointment is created or edited.
   syncAllWorkSupportBlocks();
   current=parseIso(date);
   save();
@@ -1288,7 +1413,7 @@ document.getElementById('apptSave').addEventListener('click',saveAppointmentFrom
 document.getElementById('apptCancel').onclick=()=>{pendingReschedule=null;clearApptError();document.getElementById('apptModal').classList.remove('open');};
 document.getElementById('fRepeat').onchange=e=>document.getElementById('repeatEveryWrap').classList.toggle('hidden',e.target.value!=='interval');
 document.getElementById('fTitle').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveAppointmentFromModal();}});
-document.getElementById('fWho').onchange=e=>setWho(e.target.value);
+document.getElementById('fWho').onchange=e=>setWho(e.target.value,'auto');
 
 function setAppointmentStatus(a,key,status){
   const dd=dayData(key);
@@ -1388,8 +1513,11 @@ function openRecurringEditor(r=null){
   document.getElementById('rType').value=r?.type||'reminder';
   document.getElementById('rTitle').value=r?.title||'';
   document.getElementById('rStartDate').value=r?.startDate||iso(current);
-  document.getElementById('rWho').value=r?.who||'mum';
+  const rOwner=r?.who||'mum';
+  document.getElementById('rWho').value=rOwner;
   document.getElementById('rCategory').value=r?.category||'auto';
+  populateSubcategorySelect('rSubcategory',rOwner,r?.subcategory||inferSubcategory({...r,who:rOwner})||'auto');
+  renderColorPalette('rColorPalette','rColorKey','rColorHint',r?.colorKey||'auto');
   document.getElementById('rStart').value=normalizeTime(r?.start||'09:00');
   document.getElementById('rEnd').value=normalizeTime(r?.end||'');
   document.getElementById('rRepeat').value=r?.repeat||'interval';
@@ -1404,6 +1532,7 @@ function refreshRecurringFields(){
   document.getElementById('rIntervalWrap').classList.toggle('hidden',document.getElementById('rRepeat').value!=='interval');
 }
 document.getElementById('rType').onchange=refreshRecurringFields;document.getElementById('rRepeat').onchange=refreshRecurringFields;
+document.getElementById('rWho').onchange=e=>populateSubcategorySelect('rSubcategory',e.target.value,'auto');
 document.getElementById('rCancel').onclick=()=>{document.getElementById('recEditModal').classList.remove('open');document.getElementById('recurringModal').classList.add('open');};
 document.getElementById('rSave').onclick=()=>{
   const title=document.getElementById('rTitle').value.trim();if(!title){alert('Please enter a title.');return;}
@@ -1412,7 +1541,7 @@ document.getElementById('rSave').onclick=()=>{
   const rEnd=normalizeTime(document.getElementById('rEnd').value);
   if(rType==='appointment' && rEnd && minutes(rEnd)<=minutes(rStart)){alert('End time must be later than the start time.');return;}
   const existingRec=recEditingId?recurring.find(x=>x.id===recEditingId):null;
-  const obj={id:recEditingId||uid('r'),type:rType,title,startDate:document.getElementById('rStartDate').value||iso(current),who:document.getElementById('rWho').value,category:document.getElementById('rCategory').value||'auto',start:rType==='appointment'?rStart:'',end:rType==='appointment'?rEnd:'',repeat:document.getElementById('rRepeat').value,interval:document.getElementById('rRepeat').value==='interval'?Math.max(2,Number(document.getElementById('rInterval').value)||3):undefined,flag:document.getElementById('rFlag').checked};
+  const obj={id:recEditingId||uid('r'),type:rType,title,startDate:document.getElementById('rStartDate').value||iso(current),who:document.getElementById('rWho').value,category:document.getElementById('rCategory').value||'auto',subcategory:document.getElementById('rSubcategory').value||'auto',colorKey:document.getElementById('rColorKey').value||'auto',start:rType==='appointment'?rStart:'',end:rType==='appointment'?rEnd:'',repeat:document.getElementById('rRepeat').value,interval:document.getElementById('rRepeat').value==='interval'?Math.max(2,Number(document.getElementById('rInterval').value)||3):undefined,flag:document.getElementById('rFlag').checked};
   if(recEditingId)recurring=recurring.map(x=>x.id===recEditingId?obj:x);else recurring.push(obj);
   save();document.getElementById('recEditModal').classList.remove('open');document.getElementById('recurringModal').classList.add('open');renderRecurringManager();render();
 };
@@ -1420,19 +1549,19 @@ document.getElementById('rSave').onclick=()=>{
 // Backup / restore
 function downloadSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     const blob=new Blob([raw],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-category-2026-10-06.json';
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-flexible-ui-2026-10-10.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
 function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
-    if(!confirm('Restore the pre-category safety snapshot? Current planner data will be replaced by that snapshot.')) return;
+    if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
     const p=JSON.parse(raw);
     data=p.data&&typeof p.data==='object'?p.data:{};
     recurring=Array.isArray(p.recurring)?p.recurring:[];
@@ -1515,7 +1644,13 @@ document.getElementById('prevWeek').onclick=()=>{current.setDate(current.getDate
 document.getElementById('nextWeek').onclick=()=>{current.setDate(current.getDate()+7);render();};
 document.getElementById('prevDay').onclick=()=>{current.setDate(current.getDate()-1);render();};
 document.getElementById('nextDay').onclick=()=>{current.setDate(current.getDate()+1);render();};
-document.getElementById('addBtn').onclick=()=>{if(mode!=='day'){mode='day';render();}openAppointmentModal(null,iso(current),'09:00');};
+function suggestedStartTime(){
+  if(iso(current)!==iso(today)) return '09:00';
+  const now=new Date(),rounded=Math.ceil((now.getHours()*60+now.getMinutes())/15)*15;
+  const capped=Math.min(23*60+45,rounded);
+  return pad(Math.floor(capped/60))+':'+pad(capped%60);
+}
+document.getElementById('addBtn').onclick=()=>{if(mode!=='day'){mode='day';render();}openAppointmentModal(null,iso(current),suggestedStartTime());};
 
 // Day swipe left/right
 let touchX=0,touchY=0;const dayEl=document.getElementById('day');
