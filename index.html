@@ -554,8 +554,9 @@ const RECUR_KEY='max-planner-recurring-v2';
 const META_KEY='max-planner-meta-v3';
 const SAFETY_BACKUP_KEY='max-planner-safety-pre-category-2026-10-06';
 const SAFETY_BACKUP_KEY_V18='max-planner-safety-pre-flexible-ui-2026-10-10';
-const VERSION=18;
-const APP_BUILD='PWA 1.8.0';
+const SAFETY_BACKUP_KEY_V19='max-planner-safety-pre-editable-work-blocks-2026-10-11';
+const VERSION=19;
+const APP_BUILD='PWA 1.9.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -587,6 +588,14 @@ try{
     localStorage.setItem(SAFETY_BACKUP_KEY_V18,JSON.stringify({
       app:'Max Planner',
       snapshot:'Pre-flexible-category/time-picker safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V19)){
+    localStorage.setItem(SAFETY_BACKUP_KEY_V19,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-editable-work-blocks safety backup',
       createdAt:new Date().toISOString(),
       data,recurring,meta
     }));
@@ -649,31 +658,68 @@ function appointmentVisualClass(a){
 function isWorkAppointment(a){
   return a && a.who==='work' && !a.autoWorkSupport && !a.isGeneratedWorkSupport;
 }
-function workSupportTitles(){
-  return ['Get ready for work','Drive to work'];
+function isWorkShiftAppointment(a){
+  if(!isWorkAppointment(a) || a.status==='cancelled') return false;
+  const title=String(a.title||'').trim();
+  const sub=String(a.subcategory||'');
+  return sub==='shift' || /^work$/i.test(title) || /\b(waiter|work shift|shift)\b/i.test(title);
+}
+function workSupportRoleOf(a){
+  if(a?.workSupportRole) return a.workSupportRole;
+  const title=String(a?.title||'').toLowerCase();
+  if(a?.subcategory==='prep' || /get ready|prep(?:are)? for work/.test(title)) return 'prep';
+  if(a?.subcategory==='commute' || /drive to work|go to work|leave for work|commute/.test(title)) return 'commute';
+  return '';
+}
+function timeFromMinutes(total){
+  total=((total%(24*60))+(24*60))%(24*60);
+  return pad(Math.floor(total/60))+':'+pad(total%60);
+}
+function workSupportTimes(work){
+  const start=minutes(work?.start||'19:00');
+  return {
+    prep:{start:timeFromMinutes(start-60),end:timeFromMinutes(start-30),title:'Get ready for work',category:'prep',subcategory:'prep'},
+    commute:{start:timeFromMinutes(start-30),end:timeFromMinutes(start),title:'Drive to work',category:'travel',subcategory:'commute'}
+  };
 }
 function ensureWorkSupportBlocksForDay(key){
   const dd=dayData(key);
-  const work=dd.appts.find(a=>isWorkAppointment(a) && normalizeTime(a.start)==='19:00' && normalizeTime(a.end)==='23:00' && a.status!=='cancelled');
-  if(!work) return;
-  const wanted=[
-    {start:'18:00',end:'18:30',title:'Get ready for work',category:'prep'},
-    {start:'18:30',end:'19:00',title:'Drive to work',category:'travel'}
-  ];
-  wanted.forEach(w=>{
-    const exists=dd.appts.some(a=>normalizeTime(a.start)===w.start && normalizeTime(a.end)===w.end && String(a.title||'').trim().toLowerCase()===w.title.toLowerCase());
-    if(!exists) dd.appts.push({id:uid('a'),start:w.start,end:w.end,title:w.title,who:'work',category:w.category,subcategory:w.category==='prep'?'prep':'commute',colorKey:'auto',status:'pending',autoWorkSupport:true});
+  if(!dd.workSupportSuppressed) dd.workSupportSuppressed={};
+  const work=dd.appts.filter(isWorkShiftAppointment).sort((a,b)=>minutes(a.start)-minutes(b.start))[0];
+  const autos=dd.appts.filter(a=>a.autoWorkSupport);
+
+  if(!work){
+    dd.appts=dd.appts.filter(a=>!a.autoWorkSupport);
+    return;
+  }
+
+  const wanted=workSupportTimes(work);
+  ['prep','commute'].forEach(role=>{
+    const existing=autos.find(a=>workSupportRoleOf(a)===role);
+    if(dd.workSupportSuppressed[role]){
+      if(existing && !existing.manualWorkSupport) dd.appts=dd.appts.filter(a=>a.id!==existing.id);
+      return;
+    }
+    if(existing){
+      existing.workSupportRole=role;
+      if(!existing.manualWorkSupport){
+        const w=wanted[role];
+        existing.start=w.start;existing.end=w.end;existing.title=w.title;
+        existing.category=w.category;existing.subcategory=w.subcategory;
+        existing.colorKey=existing.colorKey||'auto';
+      }
+      return;
+    }
+    const w=wanted[role];
+    dd.appts.push({
+      id:uid('a'),start:w.start,end:w.end,title:w.title,who:'work',
+      category:w.category,subcategory:w.subcategory,colorKey:'auto',status:'pending',
+      autoWorkSupport:true,workSupportRole:role,manualWorkSupport:false
+    });
   });
-}
-function removeAutoWorkSupportBlocksForDay(key){
-  const dd=dayData(key);
-  dd.appts=dd.appts.filter(a=>!a.autoWorkSupport);
 }
 function syncAllWorkSupportBlocks(){
-  Object.keys(data).forEach(key=>{
-    removeAutoWorkSupportBlocksForDay(key);
-    ensureWorkSupportBlocksForDay(key);
-  });
+  Object.keys(data).forEach(key=>ensureWorkSupportBlocksForDay(key));
 }
 function durationMinutes(a){
   if(!a.start||!a.end) return 0;
@@ -756,6 +802,7 @@ function migrateDay(dd){
   if(!dd.recurringStatus) dd.recurringStatus={};
   if(!dd.recurringHidden) dd.recurringHidden={};
   if(!dd.defaultStatus) dd.defaultStatus={};
+  if(!dd.workSupportSuppressed) dd.workSupportSuppressed={};
 }
 function migrateRecurringItems(){
   recurring.forEach(r=>{
@@ -986,14 +1033,18 @@ function mergedAppts(key){
   }).map(def=>({...def,id:def.id+'-'+key,defaultId:def.id,isDefault:true,status:dd.defaultStatus[def.id]||'pending'}));
   const rec=recurringForDate(parseIso(key),'appointment').filter(r=>!dd.appts.some(a=>normalizeTime(a.start)===normalizeTime(r.start) && a.title===r.title));
   const all=dd.appts.concat(defs,rec);
-  const hasWork=all.some(a=>isWorkAppointment(a) && normalizeTime(a.start)==='19:00' && normalizeTime(a.end)==='23:00' && a.status!=='cancelled');
+  const hasWork=all.some(isWorkShiftAppointment);
   if(hasWork){
+    const work=all.filter(isWorkShiftAppointment).sort((a,b)=>minutes(a.start)-minutes(b.start))[0];
+    const times=workSupportTimes(work||{start:'19:00'});
+    const suppressed=dd.workSupportSuppressed||{};
     const support=[
-      {id:'auto-ready-'+key,start:'18:00',end:'18:30',title:'Get ready for work',who:'work',category:'prep',subcategory:'prep',colorKey:'auto',status:'pending',isGeneratedWorkSupport:true},
-      {id:'auto-drive-'+key,start:'18:30',end:'19:00',title:'Drive to work',who:'work',category:'travel',subcategory:'commute',colorKey:'auto',status:'pending',isGeneratedWorkSupport:true}
+      {id:'auto-ready-'+key,...times.prep,who:'work',colorKey:'auto',status:'pending',isGeneratedWorkSupport:true,workSupportRole:'prep'},
+      {id:'auto-drive-'+key,...times.commute,who:'work',colorKey:'auto',status:'pending',isGeneratedWorkSupport:true,workSupportRole:'commute'}
     ];
     support.forEach(s=>{
-      if(!all.some(a=>normalizeTime(a.start)===s.start && normalizeTime(a.end)===s.end && String(a.title||'').trim().toLowerCase()===s.title.toLowerCase())) all.push(s);
+      if(suppressed[s.workSupportRole]) return;
+      if(!all.some(a=>workSupportRoleOf(a)===s.workSupportRole || (normalizeTime(a.start)===s.start && normalizeTime(a.end)===s.end && String(a.title||'').trim().toLowerCase()===s.title.toLowerCase()))) all.push(s);
     });
   }
   return all.sort((a,b)=>minutes(a.start)-minutes(b.start));
@@ -1329,7 +1380,6 @@ function openAppointmentModal(a,key,defaultStart){
   if(sheet) sheet.scrollTop=0;
 }
 function editAppointment(a,key){
-  if(a?.autoWorkSupport || a?.isGeneratedWorkSupport) return;
   openAppointmentModal(a,key);
 }
 
@@ -1363,6 +1413,13 @@ function saveAppointmentFromModal(){
   const category=document.getElementById('fCategory').value||'auto';
   const subcategory=document.getElementById('fSubcategory').value||'auto';
   const colorKey=document.getElementById('fColorKey').value||'auto';
+  const supportRole=workSupportRoleOf(editingAppt);
+  const supportFields=editingAppt?.autoWorkSupport
+    ? {autoWorkSupport:true,workSupportRole:supportRole,manualWorkSupport:true}
+    : {};
+  if((editingAppt?.autoWorkSupport || editingAppt?.isGeneratedWorkSupport) && supportRole){
+    dayData(editingApptKey).workSupportSuppressed[supportRole]=true;
+  }
   const interval=repeat==='interval'?Math.max(2,Number(document.getElementById('fInterval').value)||3):undefined;
 
   if(pendingReschedule){
@@ -1393,7 +1450,7 @@ function saveAppointmentFromModal(){
       old.appts=old.appts.filter(x=>x.id!==editingAppt.id);
     }
     if(repeat==='none'){
-      dayData(date).appts.push({id:editingAppt.isDefault?uid('a'):editingAppt.id,start,end,title,who:whoSel,category,subcategory,colorKey,flag,status:editingAppt.status||'pending'});
+      dayData(date).appts.push({id:editingAppt.isDefault?uid('a'):editingAppt.id,start,end,title,who:whoSel,category,subcategory,colorKey,flag,status:editingAppt.status||'pending',...supportFields});
     }else{
       recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,subcategory,colorKey,flag,startDate:date,start,end,repeat,interval});
     }
@@ -1424,17 +1481,13 @@ function setAppointmentStatus(a,key,status){
   save();render();
 }
 function appointmentActions(a,key){
-  if(a?.autoWorkSupport || a?.isGeneratedWorkSupport){
-    showActions(a.title,[{label:'Managed automatically from the work shift',fn:()=>{}}]);
-    return;
-  }
   const actions=[];
   if(a.status!=='completed') actions.push({label:'✓ Completed',cls:'good',fn:()=>setAppointmentStatus(a,key,'completed')});
   else actions.push({label:'Mark as pending',fn:()=>setAppointmentStatus(a,key,'pending')});
   if(a.status!=='cancelled') actions.push({label:'Not completed…',fn:()=>notCompletedActions(a,key)});
-  if(!a.isRecurring&&!a.isDefault&&!a.isGeneratedWorkSupport) actions.push({label:'Edit appointment',fn:()=>openAppointmentModal(a,key)});
+  if(!a.isRecurring&&!a.isDefault) actions.push({label:'Edit appointment',fn:()=>openAppointmentModal(a,key)});
   if(a.isRecurring) actions.push({label:'Edit recurring series',fn:()=>{const r=recurring.find(x=>x.id===a.seriesId);if(r)openRecurringEditor(r);}});
-  if(!a.isDefault&&!a.isGeneratedWorkSupport) actions.push({label:'Delete',cls:'bad',fn:()=>deleteAppointment(a,key)});
+  if(!a.isDefault) actions.push({label:'Delete',cls:'bad',fn:()=>deleteAppointment(a,key)});
   showActions(a.title,actions);
 }
 function notCompletedActions(a,key){
@@ -1452,7 +1505,17 @@ function rescheduleAppointment(a,key){
 }
 function deleteAppointment(a,key){
   const dd=dayData(key);
-  if(a.isRecurring)dd.recurringHidden[a.seriesId]=true; else if(a.isDefault)dd.removedDefaults=[...(dd.removedDefaults||[]),a.defaultId||a.id.split('-')[0]]; else dd.appts=dd.appts.filter(x=>x.id!==a.id);
+  const supportRole=workSupportRoleOf(a);
+  if((a.autoWorkSupport || a.isGeneratedWorkSupport) && supportRole){
+    dd.workSupportSuppressed[supportRole]=true;
+    dd.appts=dd.appts.filter(x=>x.id!==a.id);
+  }else if(a.isRecurring){
+    dd.recurringHidden[a.seriesId]=true;
+  }else if(a.isDefault){
+    dd.removedDefaults=[...(dd.removedDefaults||[]),a.defaultId||a.id.split('-')[0]];
+  }else{
+    dd.appts=dd.appts.filter(x=>x.id!==a.id);
+  }
   syncAllWorkSupportBlocks();
   save();render();
 }
@@ -1549,17 +1612,17 @@ document.getElementById('rSave').onclick=()=>{
 // Backup / restore
 function downloadSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     const blob=new Blob([raw],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-flexible-ui-2026-10-10.json';
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-editable-work-blocks-2026-10-11.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
 function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
     const p=JSON.parse(raw);
