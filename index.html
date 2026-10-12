@@ -225,6 +225,8 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .expenseEmpty{padding:18px;text-align:center;color:var(--sub);}
 .apptExpense{display:block;font-size:11px;line-height:1.25;margin-top:3px;font-weight:800;opacity:.92;white-space:normal;}
 .apptExpense .me{font-weight:900;}
+.apptNote{display:block;font-size:10.5px;line-height:1.2;margin-top:2px;font-weight:650;opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+.weekAppt .wkNote{display:block;font-size:11px;line-height:1.25;margin-top:3px;font-weight:600;opacity:.88;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .slot .time{cursor:pointer;}
 .hourPlus{display:block;font-size:15px;line-height:1;margin-top:5px;color:var(--accent);font-weight:900;}
 
@@ -599,8 +601,9 @@ const SAFETY_BACKUP_KEY_V21='max-planner-safety-pre-appointment-notes-2026-10-12
 const SAFETY_BACKUP_KEY_V22='max-planner-safety-pre-expense-link-2026-10-12';
 const SAFETY_BACKUP_KEY_V24='max-planner-safety-pre-expense-total-display-2026-10-13';
 const SAFETY_BACKUP_KEY_V25='max-planner-safety-pre-income-links-2026-10-13';
-const VERSION=25;
-const APP_BUILD='PWA 1.13.0';
+const SAFETY_BACKUP_KEY_V26='max-planner-safety-pre-note-display-performance-2026-10-13';
+const VERSION=26;
+const APP_BUILD='PWA 1.13.1';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -680,6 +683,14 @@ try{
     localStorage.setItem(SAFETY_BACKUP_KEY_V25,JSON.stringify({
       app:'Max Planner',
       snapshot:'Pre-income-link safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V26)){
+    localStorage.setItem(SAFETY_BACKUP_KEY_V26,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-note-display-performance safety backup',
       createdAt:new Date().toISOString(),
       data,recurring,meta
     }));
@@ -1100,14 +1111,20 @@ if(!meta.categorySystemV17Applied){
   meta.categorySystemV17Applied=true;
 }
 
-// Automatically add preparation/travel blocks for every confirmed workday.
-syncAllWorkSupportBlocks();
-
 // Migrate the old hard-coded plaster reminder to an editable recurring reminder.
 if(!recurring.some(r=>r.id==='pflaster-series')){
   recurring.push({id:'pflaster-series',type:'reminder',title:'Mama Pflaster due (patch, every 3 days)',who:'mum',flag:true,startDate:'2026-09-25',repeat:'interval',interval:3,start:'',end:''});
 }
-save();
+
+// Startup maintenance is intentionally deferred until after first paint.
+// The day renderer can still generate work-support blocks immediately when needed.
+let startupMaintenanceDone=false;
+function runStartupMaintenance(){
+  if(startupMaintenanceDone) return;
+  startupMaintenanceDone=true;
+  syncAllWorkSupportBlocks();
+  save();
+}
 
 let today=cloneDate(new Date());
 let current=new Date(today);
@@ -1232,7 +1249,8 @@ function renderWeek(){
     appts.forEach(a=>{
       const x=document.createElement('div');x.className='weekAppt '+appointmentVisualClass(a)+' '+(a.status||'');
       const mark=(a.status==='completed'?'✓ ':a.status==='cancelled'?'✕ ':'')+(a.flag?'★ ':'');
-      x.innerHTML=`<span class="wkTitle">${mark}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</span><span class="wkTime">${timeRange(a)}</span>`;
+      const userNote=appointmentUserNote(a);
+      x.innerHTML=`<span class="wkTitle">${mark}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</span><span class="wkTime">${timeRange(a)}</span>${userNote?'<span class="wkNote">'+escapeHtml(userNote)+'</span>':''}`;
       attachLongPress(x,()=>appointmentActions(a,key),()=>editAppointment(a,key));
       sec.appendChild(x);
     });
@@ -1266,7 +1284,8 @@ function renderDay(){
     appts.filter(a=>!isSpanningAppointment(a) && Number((a.start||'0').split(':')[0])===h).forEach(a=>{
       const ap=document.createElement('div');ap.className='appt '+appointmentVisualClass(a)+(a.flag?' flagged':'')+' '+(a.status||'');
       const mark=a.flag?'★ ':'';
-      ap.innerHTML=`<span class="apptMain"><span class="apptTitle">${mark}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</span><span class="apptTime">${timeRange(a)}</span>${a.expenseLink?'<span class="apptExpense">'+escapeHtml(expenseCalendarLine(a.expenseLink))+'</span>':''}</span>${statusMark(a)}`;
+      const userNote=appointmentUserNote(a);
+      ap.innerHTML=`<span class="apptMain"><span class="apptTitle">${mark}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</span><span class="apptTime">${timeRange(a)}</span>${userNote?'<span class="apptNote">'+escapeHtml(userNote)+'</span>':''}${a.expenseLink?'<span class="apptExpense">'+escapeHtml(expenseCalendarLine(a.expenseLink))+'</span>':''}</span>${statusMark(a)}`;
       attachLongPress(ap,()=>appointmentActions(a,key),()=>editAppointment(a,key));
       b.appendChild(ap);
     });
@@ -1331,7 +1350,8 @@ function renderSpanningAppointments(appts,key,slots){
     ap.style.right='auto';
     ap.style.left=`calc(${(pos.col/pos.cols)*100}% + ${pos.col?gap/2:0}px)`;
     ap.style.width=`calc(${100/pos.cols}% - ${pos.cols>1?gap/2:0}px)`;
-    ap.innerHTML=`<span class="spanMain"><strong>${a.flag?'★ ':''}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}${a.notes?' 📝':''}</strong><span class="spanDuration">${timeRange(a)}</span>${a.expenseLink?'<span class="apptExpense">'+escapeHtml(expenseCalendarLine(a.expenseLink))+'</span>':''}</span>${statusMark(a)}`;
+    const userNote=appointmentUserNote(a);
+    ap.innerHTML=`<span class="spanMain"><strong>${a.flag?'★ ':''}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</strong><span class="spanDuration">${timeRange(a)}</span>${userNote?'<span class="apptNote">'+escapeHtml(userNote)+'</span>':''}${a.expenseLink?'<span class="apptExpense">'+escapeHtml(expenseCalendarLine(a.expenseLink))+'</span>':''}</span>${statusMark(a)}`;
     attachLongPress(ap,()=>appointmentActions(a,key),()=>editAppointment(a,key));
     layer.appendChild(ap);
   });
@@ -1471,6 +1491,14 @@ let financePickerFilter='all';
 
 function moneyEUR(n){
   return new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR'}).format(Number(n||0));
+}
+function appointmentUserNote(a){
+  return String(a?.notes||'')
+    .split('\n')
+    .map(line=>line.trim())
+    .filter(Boolean)
+    .filter(line=>!/^Linked (?:expense|income):\s*/i.test(line))
+    .join(' · ');
 }
 function financeType(link){
   return String(link?.type||'expense')==='income'?'income':'expense';
@@ -1966,17 +1994,17 @@ document.getElementById('rSave').onclick=()=>{
 // Backup / restore
 function downloadSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     const blob=new Blob([raw],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-income-links-2026-10-13.json';
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-note-display-performance-2026-10-13.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
 function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
     const p=JSON.parse(raw);
@@ -2153,7 +2181,17 @@ if('serviceWorker' in navigator && location.protocol!=='file:'){
 
 syncStickyHeaderOffset();
 render();
-hydrateExistingExpenseLinks().then(changed=>{if(changed)render();}).catch(()=>{});
+
+function runWhenIdle(fn,timeout=1200){
+  if('requestIdleCallback' in window) requestIdleCallback(()=>fn(),{timeout});
+  else setTimeout(fn,250);
+}
+runWhenIdle(runStartupMaintenance,700);
+setTimeout(()=>{
+  runWhenIdle(()=>{
+    hydrateExistingExpenseLinks().then(changed=>{if(changed)render();}).catch(()=>{});
+  },1600);
+},450);
 </script>
 </body>
 </html>
