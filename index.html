@@ -219,6 +219,8 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .expensePickItem .top{display:flex;justify-content:space-between;gap:10px;font-weight:800;}
 .expensePickItem .meta{font-size:12px;color:var(--sub);margin-top:4px;line-height:1.35;}
 .expenseEmpty{padding:18px;text-align:center;color:var(--sub);}
+.apptExpense{display:block;font-size:11px;line-height:1.25;margin-top:3px;font-weight:800;opacity:.92;white-space:normal;}
+.apptExpense .me{font-weight:900;}
 .slot .time{cursor:pointer;}
 .hourPlus{display:block;font-size:15px;line-height:1;margin-top:5px;color:var(--accent);font-weight:900;}
 
@@ -586,8 +588,9 @@ const SAFETY_BACKUP_KEY_V19='max-planner-safety-pre-editable-work-blocks-2026-10
 const SAFETY_BACKUP_KEY_V20='max-planner-safety-pre-roster-oct12-25-2026';
 const SAFETY_BACKUP_KEY_V21='max-planner-safety-pre-appointment-notes-2026-10-12';
 const SAFETY_BACKUP_KEY_V22='max-planner-safety-pre-expense-link-2026-10-12';
-const VERSION=23;
-const APP_BUILD='PWA 1.12.1';
+const SAFETY_BACKUP_KEY_V24='max-planner-safety-pre-expense-total-display-2026-10-13';
+const VERSION=24;
+const APP_BUILD='PWA 1.12.2';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -651,6 +654,14 @@ try{
     localStorage.setItem(SAFETY_BACKUP_KEY_V22,JSON.stringify({
       app:'Max Planner',
       snapshot:'Pre-expense-link safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V24)){
+    localStorage.setItem(SAFETY_BACKUP_KEY_V24,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-expense-total-display safety backup',
       createdAt:new Date().toISOString(),
       data,recurring,meta
     }));
@@ -1237,7 +1248,7 @@ function renderDay(){
     appts.filter(a=>!isSpanningAppointment(a) && Number((a.start||'0').split(':')[0])===h).forEach(a=>{
       const ap=document.createElement('div');ap.className='appt '+appointmentVisualClass(a)+(a.flag?' flagged':'')+' '+(a.status||'');
       const mark=a.flag?'★ ':'';
-      ap.innerHTML=`<span class="apptMain"><span class="apptTitle">${mark}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</span><span class="apptTime">${timeRange(a)}</span></span>${statusMark(a)}`;
+      ap.innerHTML=`<span class="apptMain"><span class="apptTitle">${mark}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</span><span class="apptTime">${timeRange(a)}</span>${a.expenseLink?'<span class="apptExpense">'+escapeHtml(expenseCalendarLine(a.expenseLink))+'</span>':''}</span>${statusMark(a)}`;
       attachLongPress(ap,()=>appointmentActions(a,key),()=>editAppointment(a,key));
       b.appendChild(ap);
     });
@@ -1302,7 +1313,7 @@ function renderSpanningAppointments(appts,key,slots){
     ap.style.right='auto';
     ap.style.left=`calc(${(pos.col/pos.cols)*100}% + ${pos.col?gap/2:0}px)`;
     ap.style.width=`calc(${100/pos.cols}% - ${pos.cols>1?gap/2:0}px)`;
-    ap.innerHTML=`<span class="spanMain"><strong>${a.flag?'★ ':''}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}${a.notes?' 📝':''}${a.expenseLink?' 💶':''}</strong><span class="spanDuration">${timeRange(a)}</span></span>${statusMark(a)}`;
+    ap.innerHTML=`<span class="spanMain"><strong>${a.flag?'★ ':''}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}${a.notes?' 📝':''}</strong><span class="spanDuration">${timeRange(a)}</span>${a.expenseLink?'<span class="apptExpense">'+escapeHtml(expenseCalendarLine(a.expenseLink))+'</span>':''}</span>${statusMark(a)}`;
     attachLongPress(ap,()=>appointmentActions(a,key),()=>editAppointment(a,key));
     layer.appendChild(ap);
   });
@@ -1442,11 +1453,23 @@ let expensePickerRows=[];
 function moneyEUR(n){
   return new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR'}).format(Number(n||0));
 }
+function expenseTotal(link){
+  const total=Number(link?.receiptTotal);
+  return Number.isFinite(total)&&total>0?total:Number(link?.amount||0);
+}
 function expenseNoteLine(link){
   if(!link) return '';
-  const bits=[link.merchant||'Expense',moneyEUR(link.amount),link.category||''];
+  const bits=[
+    link.merchant||'Expense',
+    'Total '+moneyEUR(expenseTotal(link))+' / Me '+moneyEUR(link.amount),
+    link.category||''
+  ];
   if(link.payment) bits.push(link.payment);
   return 'Linked expense: '+bits.filter(Boolean).join(' · ');
+}
+function expenseCalendarLine(link){
+  if(!link) return '';
+  return (link.merchant||'Expense')+' · Total '+moneyEUR(expenseTotal(link))+' / Me '+moneyEUR(link.amount);
 }
 function syncExpenseNoteLine(link){
   const ta=document.getElementById('fNotes');
@@ -1459,6 +1482,7 @@ function expenseLinkSnapshot(t){
   return {
     id:String(t.id||''),date:String(t.date||''),time:String(t.time||''),
     merchant:String(t.merchant||''),amount:Number(t.amount||0),
+    receiptTotal:Number(t.receiptTotal??t.amount??0),
     category:String(t.category||''),subcategory:String(t.subcategory||''),
     payment:String(t.payment||''),fund:String(t.fund||''),receiptId:String(t.receiptId||'')
   };
@@ -1479,8 +1503,8 @@ function renderExpenseLink(){
   }
   const x=draftExpenseLink;
   box.className='expenseLinkBox';
-  box.innerHTML='<div class="expenseLinkTitle"><strong>'+escapeHtml(x.merchant||'Expense')+'</strong><strong>'+escapeHtml(moneyEUR(x.amount))+'</strong></div>'+
-    '<div class="expenseLinkMeta">'+escapeHtml([x.category,x.date,x.time,x.payment].filter(Boolean).join(' · '))+'</div>'+
+  box.innerHTML='<div class="expenseLinkTitle"><strong>'+escapeHtml(x.merchant||'Expense')+'</strong><strong>Total '+escapeHtml(moneyEUR(expenseTotal(x)))+'</strong></div>'+
+    '<div class="expenseLinkMeta"><strong>Me '+escapeHtml(moneyEUR(x.amount))+'</strong> · '+escapeHtml([x.category,x.date,x.time,x.payment].filter(Boolean).join(' · '))+'</div>'+
     '<div class="expenseLinkActions"><button type="button" id="changeExpenseBtn">Change</button><button type="button" id="refreshExpenseBtn">Refresh</button><button type="button" id="removeExpenseBtn">Remove</button></div>';
   document.getElementById('changeExpenseBtn').onclick=openExpensePicker;
   document.getElementById('refreshExpenseBtn').onclick=refreshLinkedExpense;
@@ -1552,8 +1576,9 @@ function renderExpensePickerRows(){
   list.innerHTML='';
   rows.slice(0,100).forEach(t=>{
     const b=document.createElement('button');b.type='button';b.className='expensePickItem';
-    b.innerHTML='<div class="top"><span>'+escapeHtml(t.merchant||'Expense')+'</span><span>'+escapeHtml(moneyEUR(t.amount))+'</span></div>'+
-      '<div class="meta">'+escapeHtml([t.category,t.subcategory,t.date,t.time,t.payment].filter(Boolean).join(' · '))+'</div>';
+    const total=Number(t.receiptTotal??t.amount??0);
+    b.innerHTML='<div class="top"><span>'+escapeHtml(t.merchant||'Expense')+'</span><span>Total '+escapeHtml(moneyEUR(total))+'</span></div>'+
+      '<div class="meta"><strong>Me '+escapeHtml(moneyEUR(t.amount))+'</strong> · '+escapeHtml([t.category,t.subcategory,t.date,t.time,t.payment].filter(Boolean).join(' · '))+'</div>';
     b.onclick=()=>{
       draftExpenseLink=expenseLinkSnapshot(t);
       syncExpenseNoteLine(draftExpenseLink);
@@ -1590,6 +1615,38 @@ async function refreshLinkedExpense(){
   draftExpenseLink=expenseLinkSnapshot(found);
   syncExpenseNoteLine(draftExpenseLink);
   renderExpenseLink();
+}
+async function hydrateExistingExpenseLinks(){
+  if(meta.expenseTotalHydrationV24Applied) return false;
+  const linked=[];
+  Object.values(data).forEach(dd=>{
+    (dd.appts||[]).forEach(a=>{if(a?.expenseLink?.id) linked.push(a);});
+  });
+  if(!linked.length){
+    meta.expenseTotalHydrationV24Applied=true;
+    save();
+    return false;
+  }
+  const result=await safelyLoadExpenseTransactions();
+  if(!result.ok) return false;
+  const byId=new Map(result.rows.map(t=>[String(t.id),t]));
+  let changed=false;
+  linked.forEach(a=>{
+    const found=byId.get(String(a.expenseLink.id));
+    if(!found) return;
+    const fresh=expenseLinkSnapshot(found);
+    const old=JSON.stringify(a.expenseLink);
+    a.expenseLink=fresh;
+    if(String(a.notes||'').split('\n').some(line=>/^Linked expense:\s*/i.test(line.trim()))){
+      const lines=String(a.notes||'').split('\n').filter(line=>!/^Linked expense:\s*/i.test(line.trim()));
+      lines.push(expenseNoteLine(fresh));
+      a.notes=lines.join('\n').trim();
+    }
+    if(JSON.stringify(fresh)!==old) changed=true;
+  });
+  meta.expenseTotalHydrationV24Applied=true;
+  save();
+  return changed;
 }
 
 function openAppointmentModal(a,key,defaultStart){
@@ -1867,17 +1924,17 @@ document.getElementById('rSave').onclick=()=>{
 // Backup / restore
 function downloadSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     const blob=new Blob([raw],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-expense-link-2026-10-12.json';
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-expense-total-display-2026-10-13.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
 function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
     const p=JSON.parse(raw);
@@ -2054,6 +2111,7 @@ if('serviceWorker' in navigator && location.protocol!=='file:'){
 
 syncStickyHeaderOffset();
 render();
+hydrateExistingExpenseLinks().then(changed=>{if(changed)render();}).catch(()=>{});
 </script>
 </body>
 </html>
