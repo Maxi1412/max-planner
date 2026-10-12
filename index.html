@@ -206,6 +206,19 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .colorChoice.selected{border-color:var(--ink);box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--ink);}
 .colorChoice.autoChoice{width:auto;min-width:58px;border-radius:17px;padding:0 10px;background:var(--bg);color:var(--ink);font-size:11px;font-weight:800;}
 .colorHint,.nativeTimeHint{font-size:11px;color:var(--sub);margin-top:5px;}
+.expenseLinkBox{margin-top:8px;padding:11px;border:1px solid var(--line);border-radius:14px;background:var(--card);}
+.expenseLinkBox.empty{background:var(--bg);}
+.expenseLinkTitle{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
+.expenseLinkTitle strong{font-size:14px;}
+.expenseLinkMeta{font-size:12px;color:var(--sub);margin-top:3px;line-height:1.4;}
+.expenseLinkActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px;}
+.expenseLinkActions button{padding:8px 10px;border-radius:10px;font-size:12px;}
+.expensePickerSearch{width:100%;margin-bottom:9px;}
+.expensePickerList{display:flex;flex-direction:column;gap:7px;max-height:55vh;overflow:auto;}
+.expensePickItem{width:100%;text-align:left;padding:11px;border:1px solid var(--line);border-radius:13px;background:var(--card);color:var(--ink);}
+.expensePickItem .top{display:flex;justify-content:space-between;gap:10px;font-weight:800;}
+.expensePickItem .meta{font-size:12px;color:var(--sub);margin-top:4px;line-height:1.35;}
+.expenseEmpty{padding:18px;text-align:center;color:var(--sub);}
 .slot .time{cursor:pointer;}
 .hourPlus{display:block;font-size:15px;line-height:1;margin-top:5px;color:var(--accent);font-weight:900;}
 
@@ -419,6 +432,8 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
   <select id="fSubcategory"></select>
   <label>Notes / details</label>
   <textarea id="fNotes" placeholder="Shopping list, details, purchases, reference information…"></textarea>
+  <label>Expense Vault</label>
+  <div id="fExpenseLink" class="expenseLinkBox empty"></div>
   <label>Color</label>
   <input id="fColorKey" type="hidden" value="auto">
   <div id="fColorPalette" class="colorPalette"></div>
@@ -440,6 +455,15 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
     <button type="button" class="cancel" id="apptCancel">Cancel</button>
     <button type="button" class="save" id="apptSave">Save</button>
   </div>
+</div></div>
+
+<!-- Expense Vault picker -->
+<div id="expensePickerModal" class="overlay"><div class="sheet">
+  <h3>Connect expense</h3>
+  <input id="expenseSearch" class="expensePickerSearch" type="search" placeholder="Search merchant, category, date or amount">
+  <div id="expensePickerStatus" class="colorHint"></div>
+  <div id="expensePickerList" class="expensePickerList"></div>
+  <div class="row"><button type="button" class="cancel" id="expensePickerClose">Close</button></div>
 </div></div>
 
 <!-- Action sheet -->
@@ -561,8 +585,9 @@ const SAFETY_BACKUP_KEY_V18='max-planner-safety-pre-flexible-ui-2026-10-10';
 const SAFETY_BACKUP_KEY_V19='max-planner-safety-pre-editable-work-blocks-2026-10-11';
 const SAFETY_BACKUP_KEY_V20='max-planner-safety-pre-roster-oct12-25-2026';
 const SAFETY_BACKUP_KEY_V21='max-planner-safety-pre-appointment-notes-2026-10-12';
-const VERSION=21;
-const APP_BUILD='PWA 1.11.0';
+const SAFETY_BACKUP_KEY_V22='max-planner-safety-pre-expense-link-2026-10-12';
+const VERSION=22;
+const APP_BUILD='PWA 1.12.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -618,6 +643,14 @@ try{
     localStorage.setItem(SAFETY_BACKUP_KEY_V21,JSON.stringify({
       app:'Max Planner',
       snapshot:'Pre-appointment-notes safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V22)){
+    localStorage.setItem(SAFETY_BACKUP_KEY_V22,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-expense-link safety backup',
       createdAt:new Date().toISOString(),
       data,recurring,meta
     }));
@@ -1269,7 +1302,7 @@ function renderSpanningAppointments(appts,key,slots){
     ap.style.right='auto';
     ap.style.left=`calc(${(pos.col/pos.cols)*100}% + ${pos.col?gap/2:0}px)`;
     ap.style.width=`calc(${100/pos.cols}% - ${pos.cols>1?gap/2:0}px)`;
-    ap.innerHTML=`<span class="spanMain"><strong>${a.flag?'★ ':''}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}${a.notes?' 📝':''}</strong><span class="spanDuration">${timeRange(a)}</span></span>${statusMark(a)}`;
+    ap.innerHTML=`<span class="spanMain"><strong>${a.flag?'★ ':''}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}${a.notes?' 📝':''}${a.expenseLink?' 💶':''}</strong><span class="spanDuration">${timeRange(a)}</span></span>${statusMark(a)}`;
     attachLongPress(ap,()=>appointmentActions(a,key),()=>editAppointment(a,key));
     layer.appendChild(ap);
   });
@@ -1403,6 +1436,161 @@ function setWho(w,selectedSubcategory){
   populateSubcategorySelect('fSubcategory',whoSel,selectedSubcategory||'auto');
 }
 
+let draftExpenseLink=null;
+let expensePickerRows=[];
+
+function moneyEUR(n){
+  return new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR'}).format(Number(n||0));
+}
+function expenseNoteLine(link){
+  if(!link) return '';
+  const bits=[link.merchant||'Expense',moneyEUR(link.amount),link.category||''];
+  if(link.payment) bits.push(link.payment);
+  return 'Linked expense: '+bits.filter(Boolean).join(' · ');
+}
+function syncExpenseNoteLine(link){
+  const ta=document.getElementById('fNotes');
+  if(!ta) return;
+  const lines=String(ta.value||'').split('\n').filter(line=>!/^Linked expense:\s*/i.test(line.trim()));
+  if(link) lines.push(expenseNoteLine(link));
+  ta.value=lines.join('\n').replace(/^\n+|\n+$/g,'');
+}
+function expenseLinkSnapshot(t){
+  return {
+    id:String(t.id||''),date:String(t.date||''),time:String(t.time||''),
+    merchant:String(t.merchant||''),amount:Number(t.amount||0),
+    category:String(t.category||''),subcategory:String(t.subcategory||''),
+    payment:String(t.payment||''),fund:String(t.fund||''),receiptId:String(t.receiptId||'')
+  };
+}
+function renderExpenseLink(){
+  const box=document.getElementById('fExpenseLink');
+  if(!box) return;
+  if(editingSeriesId){
+    box.className='expenseLinkBox empty';
+    box.innerHTML='<div class="expenseLinkMeta">Expense links are available for individual appointments, not an entire recurring series.</div>';
+    return;
+  }
+  if(!draftExpenseLink){
+    box.className='expenseLinkBox empty';
+    box.innerHTML='<div class="expenseLinkTitle"><strong>No expense connected</strong></div><div class="expenseLinkMeta">Connect an existing Expense Vault transaction to this appointment.</div><div class="expenseLinkActions"><button type="button" id="connectExpenseBtn">Connect expense</button></div>';
+    document.getElementById('connectExpenseBtn').onclick=openExpensePicker;
+    return;
+  }
+  const x=draftExpenseLink;
+  box.className='expenseLinkBox';
+  box.innerHTML='<div class="expenseLinkTitle"><strong>'+escapeHtml(x.merchant||'Expense')+'</strong><strong>'+escapeHtml(moneyEUR(x.amount))+'</strong></div>'+
+    '<div class="expenseLinkMeta">'+escapeHtml([x.category,x.date,x.time,x.payment].filter(Boolean).join(' · '))+'</div>'+
+    '<div class="expenseLinkActions"><button type="button" id="changeExpenseBtn">Change</button><button type="button" id="refreshExpenseBtn">Refresh</button><button type="button" id="removeExpenseBtn">Remove</button></div>';
+  document.getElementById('changeExpenseBtn').onclick=openExpensePicker;
+  document.getElementById('refreshExpenseBtn').onclick=refreshLinkedExpense;
+  document.getElementById('removeExpenseBtn').onclick=()=>{draftExpenseLink=null;syncExpenseNoteLine(null);renderExpenseLink();};
+}
+function openIndexedDb(name,version,upgrade){
+  return new Promise((resolve,reject)=>{
+    const req=version?indexedDB.open(name,version):indexedDB.open(name);
+    if(upgrade) req.onupgradeneeded=()=>upgrade(req.result);
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error||new Error('Could not open '+name));
+  });
+}
+async function readStoreAll(db,storeName){
+  if(!db.objectStoreNames.contains(storeName)) return [];
+  return new Promise((resolve,reject)=>{
+    const req=db.transaction(storeName,'readonly').objectStore(storeName).getAll();
+    req.onsuccess=()=>resolve(req.result||[]);
+    req.onerror=()=>reject(req.error||new Error('Could not read '+storeName));
+  });
+}
+async function readExpenseVaultState(){
+  const db=await openIndexedDb('expense-vault');
+  try{
+    if(!db.objectStoreNames.contains('transactions')) throw new Error('Expense Vault is not initialized on this device.');
+    const [transactions,receipts,meta]=await Promise.all([
+      readStoreAll(db,'transactions'),readStoreAll(db,'receipts'),readStoreAll(db,'meta')
+    ]);
+    return {schemaVersion:1,exportedAt:new Date().toISOString(),transactions,receipts,meta};
+  }finally{db.close();}
+}
+async function saveExpenseVaultSafetyCopy(payload){
+  const db=await openIndexedDb('max-planner-expense-vault-safety',1,db=>{
+    if(!db.objectStoreNames.contains('snapshots')) db.createObjectStore('snapshots',{keyPath:'key'});
+  });
+  try{
+    const stamp=new Date().toISOString(),day=stamp.slice(0,10);
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction('snapshots','readwrite'),store=tx.objectStore('snapshots');
+      store.put({key:'latest',savedAt:stamp,payload});
+      store.put({key:'day:'+day,savedAt:stamp,payload});
+      tx.oncomplete=resolve;
+      tx.onerror=()=>reject(tx.error||new Error('Expense safety backup failed'));
+      tx.onabort=()=>reject(tx.error||new Error('Expense safety backup aborted'));
+    });
+  }finally{db.close();}
+}
+async function safelyLoadExpenseTransactions(){
+  try{
+    const state=await readExpenseVaultState();
+    await saveExpenseVaultSafetyCopy(state);
+    return {ok:true,rows:(state.transactions||[]).filter(t=>(t.type||'expense')==='expense')};
+  }catch(e){
+    return {ok:false,error:e?.message||'Expense Vault data could not be backed up/read.'};
+  }
+}
+function renderExpensePickerRows(){
+  const list=document.getElementById('expensePickerList'),status=document.getElementById('expensePickerStatus');
+  const q=String(document.getElementById('expenseSearch')?.value||'').trim().toLowerCase();
+  const apptDate=document.getElementById('fDate')?.value||'';
+  let rows=expensePickerRows.slice();
+  if(q) rows=rows.filter(t=>[t.merchant,t.category,t.subcategory,t.date,t.time,t.payment,t.amount].join(' ').toLowerCase().includes(q));
+  rows.sort((a,b)=>{
+    const ad=a.date===apptDate?0:1,bd=b.date===apptDate?0:1;
+    if(ad!==bd) return ad-bd;
+    return String(b.date||'').localeCompare(String(a.date||''))||String(b.time||'').localeCompare(String(a.time||''));
+  });
+  status.textContent=rows.length+(rows.length===1?' expense':' expenses')+(apptDate?' · same-day items shown first':'');
+  list.innerHTML='';
+  rows.slice(0,100).forEach(t=>{
+    const b=document.createElement('button');b.type='button';b.className='expensePickItem';
+    b.innerHTML='<div class="top"><span>'+escapeHtml(t.merchant||'Expense')+'</span><span>'+escapeHtml(moneyEUR(t.amount))+'</span></div>'+
+      '<div class="meta">'+escapeHtml([t.category,t.subcategory,t.date,t.time,t.payment].filter(Boolean).join(' · '))+'</div>';
+    b.onclick=()=>{
+      draftExpenseLink=expenseLinkSnapshot(t);
+      syncExpenseNoteLine(draftExpenseLink);
+      renderExpenseLink();
+      document.getElementById('expensePickerModal').classList.remove('open');
+    };
+    list.appendChild(b);
+  });
+  if(!rows.length) list.innerHTML='<div class="expenseEmpty">No matching expenses found.</div>';
+}
+async function openExpensePicker(){
+  if(editingSeriesId) return;
+  const modal=document.getElementById('expensePickerModal'),list=document.getElementById('expensePickerList'),status=document.getElementById('expensePickerStatus');
+  document.getElementById('expenseSearch').value='';
+  list.innerHTML='<div class="expenseEmpty">Backing up Expense Vault before connecting…</div>';
+  status.textContent='';
+  modal.classList.add('open');
+  const result=await safelyLoadExpenseTransactions();
+  if(!result.ok){
+    status.textContent='Connection stopped: Expense Vault could not be safely backed up.';
+    list.innerHTML='<div class="expenseEmpty">'+escapeHtml(result.error)+'<br><br>Open Expense Vault once on this phone, then try again.</div>';
+    return;
+  }
+  expensePickerRows=result.rows;
+  renderExpensePickerRows();
+}
+async function refreshLinkedExpense(){
+  if(!draftExpenseLink?.id) return;
+  const result=await safelyLoadExpenseTransactions();
+  if(!result.ok){alert('Could not safely refresh Expense Vault. '+result.error);return;}
+  const found=result.rows.find(t=>String(t.id)===String(draftExpenseLink.id));
+  if(!found){alert('That expense is no longer present in Expense Vault. The saved appointment link has been kept.');return;}
+  draftExpenseLink=expenseLinkSnapshot(found);
+  syncExpenseNoteLine(draftExpenseLink);
+  renderExpenseLink();
+}
+
 function openAppointmentModal(a,key,defaultStart){
   editingAppt=a||null;editingApptKey=key||iso(current);editingSeriesId=null;
   pendingReschedule=a?._rescheduleContext||null;
@@ -1419,6 +1607,7 @@ function openAppointmentModal(a,key,defaultStart){
   document.getElementById('fFlag').checked=!!source?.flag;
   document.getElementById('fCategory').value=source?.category||'auto';
   document.getElementById('fNotes').value=source?.notes||'';
+  draftExpenseLink=source?.expenseLink?{...source.expenseLink}:null;
   const repeat=editingSeriesId?(source?.repeat||'weekly'):'none';
   document.getElementById('fRepeat').value=repeat;
   document.getElementById('fInterval').value=source?.interval||3;
@@ -1427,6 +1616,7 @@ function openAppointmentModal(a,key,defaultStart){
   const inferredSub=source?.subcategory||inferSubcategory({...source,who:owner})||'auto';
   setWho(owner,inferredSub);
   renderColorPalette('fColorPalette','fColorKey','fColorHint',source?.colorKey||'auto');
+  renderExpenseLink();
   document.getElementById('fRepeat').disabled=false;
   clearApptError();
   const modal=document.getElementById('apptModal');
@@ -1469,6 +1659,7 @@ function saveAppointmentFromModal(){
   const subcategory=document.getElementById('fSubcategory').value||'auto';
   const colorKey=document.getElementById('fColorKey').value||'auto';
   const notes=document.getElementById('fNotes').value.trim();
+  const expenseLink=editingSeriesId||repeat!=='none'?null:(draftExpenseLink?{...draftExpenseLink}:null);
   const supportRole=workSupportRoleOf(editingAppt);
   const supportFields=editingAppt?.autoWorkSupport
     ? {autoWorkSupport:true,workSupportRole:supportRole,manualWorkSupport:true}
@@ -1486,15 +1677,15 @@ function saveAppointmentFromModal(){
       const original=dayData(ctx.key).appts.find(x=>x.id===ctx.id);
       if(original) original.status='cancelled';
     }
-    const clean={id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,notes,flag,status:'pending'};
+    const clean={id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,notes,expenseLink,flag,status:'pending'};
     dayData(date).appts.push(clean);
     pendingReschedule=null;editingAppt=null;editingApptKey=null;editingSeriesId=null;
   }else if(editingSeriesId){
     if(repeat==='none'){
       recurring=recurring.filter(x=>x.id!==editingSeriesId);
-      dayData(date).appts.push({id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,notes,flag,status:'pending'});
+      dayData(date).appts.push({id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,notes,expenseLink,flag,status:'pending'});
     }else{
-      recurring=recurring.map(r=>r.id===editingSeriesId?{...r,type:'appointment',title,who:whoSel,category,subcategory,colorKey,notes,flag,startDate:date,start,end,repeat,interval}:r);
+      recurring=recurring.map(r=>r.id===editingSeriesId?{...r,type:'appointment',title,who:whoSel,category,subcategory,colorKey,notes,expenseLink:null,flag,startDate:date,start,end,repeat,interval}:r);
     }
   }else if(editingAppt){
     const old=dayData(editingApptKey);
@@ -1506,24 +1697,27 @@ function saveAppointmentFromModal(){
       old.appts=old.appts.filter(x=>x.id!==editingAppt.id);
     }
     if(repeat==='none'){
-      dayData(date).appts.push({id:editingAppt.isDefault?uid('a'):editingAppt.id,start,end,title,who:whoSel,category,subcategory,colorKey,notes,flag,status:editingAppt.status||'pending',...supportFields});
+      dayData(date).appts.push({id:editingAppt.isDefault?uid('a'):editingAppt.id,start,end,title,who:whoSel,category,subcategory,colorKey,notes,expenseLink,flag,status:editingAppt.status||'pending',...supportFields});
     }else{
-      recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,subcategory,colorKey,notes,flag,startDate:date,start,end,repeat,interval});
+      recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,subcategory,colorKey,notes,expenseLink:null,flag,startDate:date,start,end,repeat,interval});
     }
   }else if(repeat!=='none'){
-    recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,subcategory,colorKey,notes,flag,startDate:date,start,end,repeat,interval});
+    recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,subcategory,colorKey,notes,expenseLink:null,flag,startDate:date,start,end,repeat,interval});
   }else{
-    dayData(date).appts.push({id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,notes,flag,status:'pending'});
+    dayData(date).appts.push({id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,notes,expenseLink,flag,status:'pending'});
   }
   syncAllWorkSupportBlocks();
   current=parseIso(date);
   save();
+  draftExpenseLink=null;
   document.getElementById('apptModal').classList.remove('open');
   render();
   return true;
 }
 document.getElementById('apptSave').addEventListener('click',saveAppointmentFromModal);
-document.getElementById('apptCancel').onclick=()=>{pendingReschedule=null;clearApptError();document.getElementById('apptModal').classList.remove('open');};
+document.getElementById('apptCancel').onclick=()=>{pendingReschedule=null;draftExpenseLink=null;clearApptError();document.getElementById('apptModal').classList.remove('open');};
+document.getElementById('expensePickerClose').onclick=()=>document.getElementById('expensePickerModal').classList.remove('open');
+document.getElementById('expenseSearch').addEventListener('input',renderExpensePickerRows);
 document.getElementById('fRepeat').onchange=e=>document.getElementById('repeatEveryWrap').classList.toggle('hidden',e.target.value!=='interval');
 document.getElementById('fTitle').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveAppointmentFromModal();}});
 document.getElementById('fWho').onchange=e=>setWho(e.target.value,'auto');
@@ -1669,17 +1863,17 @@ document.getElementById('rSave').onclick=()=>{
 // Backup / restore
 function downloadSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     const blob=new Blob([raw],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-appointment-notes-2026-10-12.json';
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-expense-link-2026-10-12.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
 function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
     const p=JSON.parse(raw);
