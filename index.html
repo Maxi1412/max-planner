@@ -586,8 +586,8 @@ const SAFETY_BACKUP_KEY_V19='max-planner-safety-pre-editable-work-blocks-2026-10
 const SAFETY_BACKUP_KEY_V20='max-planner-safety-pre-roster-oct12-25-2026';
 const SAFETY_BACKUP_KEY_V21='max-planner-safety-pre-appointment-notes-2026-10-12';
 const SAFETY_BACKUP_KEY_V22='max-planner-safety-pre-expense-link-2026-10-12';
-const VERSION=22;
-const APP_BUILD='PWA 1.12.0';
+const VERSION=23;
+const APP_BUILD='PWA 1.12.1';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -1574,7 +1574,8 @@ async function openExpensePicker(){
   const result=await safelyLoadExpenseTransactions();
   if(!result.ok){
     status.textContent='Connection stopped: Expense Vault could not be safely backed up.';
-    list.innerHTML='<div class="expenseEmpty">'+escapeHtml(result.error)+'<br><br>Open Expense Vault once on this phone, then try again.</div>';
+    list.innerHTML='<div class="expenseEmpty">'+escapeHtml(result.error)+'<br><br><button type="button" id="openExpenseVaultBtn">Open Expense Vault</button></div>';
+    document.getElementById('openExpenseVaultBtn').onclick=()=>window.open(location.origin+'/expense-vault/','_blank');
     return;
   }
   expensePickerRows=result.rows;
@@ -1658,8 +1659,11 @@ function saveAppointmentFromModal(){
   const category=document.getElementById('fCategory').value||'auto';
   const subcategory=document.getElementById('fSubcategory').value||'auto';
   const colorKey=document.getElementById('fColorKey').value||'auto';
-  const notes=document.getElementById('fNotes').value.trim();
+  let notes=document.getElementById('fNotes').value.trim();
   const expenseLink=editingSeriesId||repeat!=='none'?null:(draftExpenseLink?{...draftExpenseLink}:null);
+  if(!expenseLink){
+    notes=notes.split('\n').filter(line=>!/^Linked expense:\s*/i.test(line.trim())).join('\n').trim();
+  }
   const supportRole=workSupportRoleOf(editingAppt);
   const supportFields=editingAppt?.autoWorkSupport
     ? {autoWorkSupport:true,workSupportRole:supportRole,manualWorkSupport:true}
