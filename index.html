@@ -555,8 +555,9 @@ const META_KEY='max-planner-meta-v3';
 const SAFETY_BACKUP_KEY='max-planner-safety-pre-category-2026-10-06';
 const SAFETY_BACKUP_KEY_V18='max-planner-safety-pre-flexible-ui-2026-10-10';
 const SAFETY_BACKUP_KEY_V19='max-planner-safety-pre-editable-work-blocks-2026-10-11';
-const VERSION=19;
-const APP_BUILD='PWA 1.9.0';
+const SAFETY_BACKUP_KEY_V20='max-planner-safety-pre-roster-oct12-25-2026';
+const VERSION=20;
+const APP_BUILD='PWA 1.10.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -596,6 +597,14 @@ try{
     localStorage.setItem(SAFETY_BACKUP_KEY_V19,JSON.stringify({
       app:'Max Planner',
       snapshot:'Pre-editable-work-blocks safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V20)){
+    localStorage.setItem(SAFETY_BACKUP_KEY_V20,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-roster Oct 12-25 safety backup',
       createdAt:new Date().toISOString(),
       data,recurring,meta
     }));
@@ -929,6 +938,38 @@ if(!meta.workRosterThroughOct18Applied){
   });
 
   meta.workRosterThroughOct18Applied=true;
+}
+
+// Confirmed restaurant roster from screenshots: 12–25 Oct 2026.
+// Add-only migration: preserve all existing planner data and avoid duplicate shifts.
+if(!meta.workRosterOct12To25V20Applied){
+  const workDates=[
+    '2026-10-12','2026-10-13','2026-10-15','2026-10-16','2026-10-17',
+    '2026-10-19','2026-10-20','2026-10-22','2026-10-23','2026-10-24'
+  ];
+  workDates.forEach(key=>{
+    const dd=dayData(key);
+    const exists=dd.appts.some(a=>
+      isWorkShiftAppointment(a) &&
+      normalizeTime(a.start)==='19:00' &&
+      normalizeTime(a.end)==='23:00' &&
+      a.status!=='cancelled'
+    );
+    if(!exists){
+      dd.appts.push({
+        id:uid('a'),
+        start:'19:00',
+        end:'23:00',
+        title:'Work',
+        who:'work',
+        category:'work',
+        subcategory:'shift',
+        colorKey:'auto',
+        status:'pending'
+      });
+    }
+  });
+  meta.workRosterOct12To25V20Applied=true;
 }
 
 // Important job interview confirmed via Calendly for 6 Oct 2026.
@@ -1612,17 +1653,17 @@ document.getElementById('rSave').onclick=()=>{
 // Backup / restore
 function downloadSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     const blob=new Blob([raw],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-editable-work-blocks-2026-10-11.json';
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-roster-oct12-25-2026.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
 function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
     const p=JSON.parse(raw);
