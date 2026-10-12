@@ -417,6 +417,8 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
   </select>
   <label>Activity / subcategory</label>
   <select id="fSubcategory"></select>
+  <label>Notes / details</label>
+  <textarea id="fNotes" placeholder="Shopping list, details, purchases, reference information…"></textarea>
   <label>Color</label>
   <input id="fColorKey" type="hidden" value="auto">
   <div id="fColorPalette" class="colorPalette"></div>
@@ -516,6 +518,8 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
   </select>
   <label>Activity / subcategory</label>
   <select id="rSubcategory"></select>
+  <label>Notes / details</label>
+  <textarea id="rNotes" placeholder="Extra information for this recurring item…"></textarea>
   <label>Color</label>
   <input id="rColorKey" type="hidden" value="auto">
   <div id="rColorPalette" class="colorPalette"></div>
@@ -556,8 +560,9 @@ const SAFETY_BACKUP_KEY='max-planner-safety-pre-category-2026-10-06';
 const SAFETY_BACKUP_KEY_V18='max-planner-safety-pre-flexible-ui-2026-10-10';
 const SAFETY_BACKUP_KEY_V19='max-planner-safety-pre-editable-work-blocks-2026-10-11';
 const SAFETY_BACKUP_KEY_V20='max-planner-safety-pre-roster-oct12-25-2026';
-const VERSION=20;
-const APP_BUILD='PWA 1.10.0';
+const SAFETY_BACKUP_KEY_V21='max-planner-safety-pre-appointment-notes-2026-10-12';
+const VERSION=21;
+const APP_BUILD='PWA 1.11.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -605,6 +610,14 @@ try{
     localStorage.setItem(SAFETY_BACKUP_KEY_V20,JSON.stringify({
       app:'Max Planner',
       snapshot:'Pre-roster Oct 12-25 safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V21)){
+    localStorage.setItem(SAFETY_BACKUP_KEY_V21,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-appointment-notes safety backup',
       createdAt:new Date().toISOString(),
       data,recurring,meta
     }));
@@ -1059,7 +1072,7 @@ function recurringForDate(d,type){
   const key=iso(d); const dd=dayData(key);
   return recurring.filter(r=>r.type===type && recurrenceDue(r,d) && !dd.recurringHidden[r.id]).map(r=>({
     id:'rec-'+r.id+'-'+key,seriesId:r.id,isRecurring:true,title:r.title,who:r.who||'mine',flag:!!r.flag,
-    start:r.start||'',end:r.end||'',category:r.category||'auto',subcategory:r.subcategory||'auto',colorKey:r.colorKey||'auto',status:dd.recurringStatus[r.id]||'pending'
+    start:r.start||'',end:r.end||'',category:r.category||'auto',subcategory:r.subcategory||'auto',colorKey:r.colorKey||'auto',notes:r.notes||'',status:dd.recurringStatus[r.id]||'pending'
   }));
 }
 function mergedAppts(key){
@@ -1256,7 +1269,7 @@ function renderSpanningAppointments(appts,key,slots){
     ap.style.right='auto';
     ap.style.left=`calc(${(pos.col/pos.cols)*100}% + ${pos.col?gap/2:0}px)`;
     ap.style.width=`calc(${100/pos.cols}% - ${pos.cols>1?gap/2:0}px)`;
-    ap.innerHTML=`<span class="spanMain"><strong>${a.flag?'★ ':''}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</strong><span class="spanDuration">${timeRange(a)}</span></span>${statusMark(a)}`;
+    ap.innerHTML=`<span class="spanMain"><strong>${a.flag?'★ ':''}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}${a.notes?' 📝':''}</strong><span class="spanDuration">${timeRange(a)}</span></span>${statusMark(a)}`;
     attachLongPress(ap,()=>appointmentActions(a,key),()=>editAppointment(a,key));
     layer.appendChild(ap);
   });
@@ -1405,6 +1418,7 @@ function openAppointmentModal(a,key,defaultStart){
   document.getElementById('fEnd').value=normalizeTime(source?.end||'');
   document.getElementById('fFlag').checked=!!source?.flag;
   document.getElementById('fCategory').value=source?.category||'auto';
+  document.getElementById('fNotes').value=source?.notes||'';
   const repeat=editingSeriesId?(source?.repeat||'weekly'):'none';
   document.getElementById('fRepeat').value=repeat;
   document.getElementById('fInterval').value=source?.interval||3;
@@ -1454,6 +1468,7 @@ function saveAppointmentFromModal(){
   const category=document.getElementById('fCategory').value||'auto';
   const subcategory=document.getElementById('fSubcategory').value||'auto';
   const colorKey=document.getElementById('fColorKey').value||'auto';
+  const notes=document.getElementById('fNotes').value.trim();
   const supportRole=workSupportRoleOf(editingAppt);
   const supportFields=editingAppt?.autoWorkSupport
     ? {autoWorkSupport:true,workSupportRole:supportRole,manualWorkSupport:true}
@@ -1471,15 +1486,15 @@ function saveAppointmentFromModal(){
       const original=dayData(ctx.key).appts.find(x=>x.id===ctx.id);
       if(original) original.status='cancelled';
     }
-    const clean={id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,flag,status:'pending'};
+    const clean={id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,notes,flag,status:'pending'};
     dayData(date).appts.push(clean);
     pendingReschedule=null;editingAppt=null;editingApptKey=null;editingSeriesId=null;
   }else if(editingSeriesId){
     if(repeat==='none'){
       recurring=recurring.filter(x=>x.id!==editingSeriesId);
-      dayData(date).appts.push({id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,flag,status:'pending'});
+      dayData(date).appts.push({id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,notes,flag,status:'pending'});
     }else{
-      recurring=recurring.map(r=>r.id===editingSeriesId?{...r,type:'appointment',title,who:whoSel,category,subcategory,colorKey,flag,startDate:date,start,end,repeat,interval}:r);
+      recurring=recurring.map(r=>r.id===editingSeriesId?{...r,type:'appointment',title,who:whoSel,category,subcategory,colorKey,notes,flag,startDate:date,start,end,repeat,interval}:r);
     }
   }else if(editingAppt){
     const old=dayData(editingApptKey);
@@ -1491,14 +1506,14 @@ function saveAppointmentFromModal(){
       old.appts=old.appts.filter(x=>x.id!==editingAppt.id);
     }
     if(repeat==='none'){
-      dayData(date).appts.push({id:editingAppt.isDefault?uid('a'):editingAppt.id,start,end,title,who:whoSel,category,subcategory,colorKey,flag,status:editingAppt.status||'pending',...supportFields});
+      dayData(date).appts.push({id:editingAppt.isDefault?uid('a'):editingAppt.id,start,end,title,who:whoSel,category,subcategory,colorKey,notes,flag,status:editingAppt.status||'pending',...supportFields});
     }else{
-      recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,subcategory,colorKey,flag,startDate:date,start,end,repeat,interval});
+      recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,subcategory,colorKey,notes,flag,startDate:date,start,end,repeat,interval});
     }
   }else if(repeat!=='none'){
-    recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,subcategory,colorKey,flag,startDate:date,start,end,repeat,interval});
+    recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,subcategory,colorKey,notes,flag,startDate:date,start,end,repeat,interval});
   }else{
-    dayData(date).appts.push({id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,flag,status:'pending'});
+    dayData(date).appts.push({id:uid('a'),start,end,title,who:whoSel,category,subcategory,colorKey,notes,flag,status:'pending'});
   }
   syncAllWorkSupportBlocks();
   current=parseIso(date);
@@ -1620,6 +1635,7 @@ function openRecurringEditor(r=null){
   const rOwner=r?.who||'mum';
   document.getElementById('rWho').value=rOwner;
   document.getElementById('rCategory').value=r?.category||'auto';
+  document.getElementById('rNotes').value=r?.notes||'';
   populateSubcategorySelect('rSubcategory',rOwner,r?.subcategory||inferSubcategory({...r,who:rOwner})||'auto');
   renderColorPalette('rColorPalette','rColorKey','rColorHint',r?.colorKey||'auto');
   document.getElementById('rStart').value=normalizeTime(r?.start||'09:00');
@@ -1645,7 +1661,7 @@ document.getElementById('rSave').onclick=()=>{
   const rEnd=normalizeTime(document.getElementById('rEnd').value);
   if(rType==='appointment' && rEnd && minutes(rEnd)<=minutes(rStart)){alert('End time must be later than the start time.');return;}
   const existingRec=recEditingId?recurring.find(x=>x.id===recEditingId):null;
-  const obj={id:recEditingId||uid('r'),type:rType,title,startDate:document.getElementById('rStartDate').value||iso(current),who:document.getElementById('rWho').value,category:document.getElementById('rCategory').value||'auto',subcategory:document.getElementById('rSubcategory').value||'auto',colorKey:document.getElementById('rColorKey').value||'auto',start:rType==='appointment'?rStart:'',end:rType==='appointment'?rEnd:'',repeat:document.getElementById('rRepeat').value,interval:document.getElementById('rRepeat').value==='interval'?Math.max(2,Number(document.getElementById('rInterval').value)||3):undefined,flag:document.getElementById('rFlag').checked};
+  const obj={id:recEditingId||uid('r'),type:rType,title,startDate:document.getElementById('rStartDate').value||iso(current),who:document.getElementById('rWho').value,category:document.getElementById('rCategory').value||'auto',subcategory:document.getElementById('rSubcategory').value||'auto',colorKey:document.getElementById('rColorKey').value||'auto',notes:document.getElementById('rNotes').value.trim(),start:rType==='appointment'?rStart:'',end:rType==='appointment'?rEnd:'',repeat:document.getElementById('rRepeat').value,interval:document.getElementById('rRepeat').value==='interval'?Math.max(2,Number(document.getElementById('rInterval').value)||3):undefined,flag:document.getElementById('rFlag').checked};
   if(recEditingId)recurring=recurring.map(x=>x.id===recEditingId?obj:x);else recurring.push(obj);
   save();document.getElementById('recEditModal').classList.remove('open');document.getElementById('recurringModal').classList.add('open');renderRecurringManager();render();
 };
@@ -1653,17 +1669,17 @@ document.getElementById('rSave').onclick=()=>{
 // Backup / restore
 function downloadSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     const blob=new Blob([raw],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-roster-oct12-25-2026.json';
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-appointment-notes-2026-10-12.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
 function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
     const p=JSON.parse(raw);
