@@ -214,6 +214,10 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .expenseLinkActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px;}
 .expenseLinkActions button{padding:8px 10px;border-radius:10px;font-size:12px;}
 .expensePickerSearch{width:100%;margin-bottom:9px;}
+.financeFilterRow{display:flex;gap:7px;margin:0 0 9px;flex-wrap:wrap;}
+.financeFilterBtn{padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:12px;font-weight:800;}
+.financeFilterBtn.active{background:var(--accent);color:white;border-color:var(--accent);}
+.incomeText{color:#15803d;font-weight:900;}
 .expensePickerList{display:flex;flex-direction:column;gap:7px;max-height:55vh;overflow:auto;}
 .expensePickItem{width:100%;text-align:left;padding:11px;border:1px solid var(--line);border-radius:13px;background:var(--card);color:var(--ink);}
 .expensePickItem .top{display:flex;justify-content:space-between;gap:10px;font-weight:800;}
@@ -434,7 +438,7 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
   <select id="fSubcategory"></select>
   <label>Notes / details</label>
   <textarea id="fNotes" placeholder="Shopping list, details, purchases, reference information…"></textarea>
-  <label>Expense Vault</label>
+  <label>Finance connection</label>
   <div id="fExpenseLink" class="expenseLinkBox empty"></div>
   <label>Color</label>
   <input id="fColorKey" type="hidden" value="auto">
@@ -461,8 +465,13 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 
 <!-- Expense Vault picker -->
 <div id="expensePickerModal" class="overlay"><div class="sheet">
-  <h3>Connect expense</h3>
-  <input id="expenseSearch" class="expensePickerSearch" type="search" placeholder="Search merchant, category, date or amount">
+  <h3>Connect finance transaction</h3>
+  <input id="expenseSearch" class="expensePickerSearch" type="search" placeholder="Search source, merchant, category, date or amount">
+  <div class="financeFilterRow">
+    <button type="button" class="financeFilterBtn active" data-finance-filter="all">All</button>
+    <button type="button" class="financeFilterBtn" data-finance-filter="expense">Expenses</button>
+    <button type="button" class="financeFilterBtn" data-finance-filter="income">Income</button>
+  </div>
   <div id="expensePickerStatus" class="colorHint"></div>
   <div id="expensePickerList" class="expensePickerList"></div>
   <div class="row"><button type="button" class="cancel" id="expensePickerClose">Close</button></div>
@@ -589,8 +598,9 @@ const SAFETY_BACKUP_KEY_V20='max-planner-safety-pre-roster-oct12-25-2026';
 const SAFETY_BACKUP_KEY_V21='max-planner-safety-pre-appointment-notes-2026-10-12';
 const SAFETY_BACKUP_KEY_V22='max-planner-safety-pre-expense-link-2026-10-12';
 const SAFETY_BACKUP_KEY_V24='max-planner-safety-pre-expense-total-display-2026-10-13';
-const VERSION=24;
-const APP_BUILD='PWA 1.12.2';
+const SAFETY_BACKUP_KEY_V25='max-planner-safety-pre-income-links-2026-10-13';
+const VERSION=25;
+const APP_BUILD='PWA 1.13.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -662,6 +672,14 @@ try{
     localStorage.setItem(SAFETY_BACKUP_KEY_V24,JSON.stringify({
       app:'Max Planner',
       snapshot:'Pre-expense-total-display safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V25)){
+    localStorage.setItem(SAFETY_BACKUP_KEY_V25,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-income-link safety backup',
       createdAt:new Date().toISOString(),
       data,recurring,meta
     }));
@@ -1449,9 +1467,13 @@ function setWho(w,selectedSubcategory){
 
 let draftExpenseLink=null;
 let expensePickerRows=[];
+let financePickerFilter='all';
 
 function moneyEUR(n){
   return new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR'}).format(Number(n||0));
+}
+function financeType(link){
+  return String(link?.type||'expense')==='income'?'income':'expense';
 }
 function expenseTotal(link){
   const total=Number(link?.receiptTotal);
@@ -1459,28 +1481,31 @@ function expenseTotal(link){
 }
 function expenseNoteLine(link){
   if(!link) return '';
-  const bits=[
-    link.merchant||'Expense',
-    'Total '+moneyEUR(expenseTotal(link))+' / Me '+moneyEUR(link.amount),
-    link.category||''
-  ];
+  if(financeType(link)==='income'){
+    const bits=[link.merchant||'Income','+'+moneyEUR(link.amount),link.category||''];
+    if(link.payment) bits.push(link.payment);
+    return 'Linked income: '+bits.filter(Boolean).join(' · ');
+  }
+  const bits=[link.merchant||'Expense','Total '+moneyEUR(expenseTotal(link))+' / Me '+moneyEUR(link.amount),link.category||''];
   if(link.payment) bits.push(link.payment);
   return 'Linked expense: '+bits.filter(Boolean).join(' · ');
 }
 function expenseCalendarLine(link){
   if(!link) return '';
+  if(financeType(link)==='income') return (link.merchant||'Income')+' · Income +'+moneyEUR(link.amount);
   return (link.merchant||'Expense')+' · Total '+moneyEUR(expenseTotal(link))+' / Me '+moneyEUR(link.amount);
 }
 function syncExpenseNoteLine(link){
   const ta=document.getElementById('fNotes');
   if(!ta) return;
-  const lines=String(ta.value||'').split('\n').filter(line=>!/^Linked expense:\s*/i.test(line.trim()));
+  const lines=String(ta.value||'').split('\n').filter(line=>!/^Linked (?:expense|income):\s*/i.test(line.trim()));
   if(link) lines.push(expenseNoteLine(link));
   ta.value=lines.join('\n').replace(/^\n+|\n+$/g,'');
 }
 function expenseLinkSnapshot(t){
   return {
-    id:String(t.id||''),date:String(t.date||''),time:String(t.time||''),
+    id:String(t.id||''),type:String(t.type||'expense')==='income'?'income':'expense',
+    date:String(t.date||''),time:String(t.time||''),
     merchant:String(t.merchant||''),amount:Number(t.amount||0),
     receiptTotal:Number(t.receiptTotal??t.amount??0),
     category:String(t.category||''),subcategory:String(t.subcategory||''),
@@ -1492,23 +1517,26 @@ function renderExpenseLink(){
   if(!box) return;
   if(editingSeriesId){
     box.className='expenseLinkBox empty';
-    box.innerHTML='<div class="expenseLinkMeta">Expense links are available for individual appointments, not an entire recurring series.</div>';
+    box.innerHTML='<div class="expenseLinkMeta">Finance links are available for individual appointments, not an entire recurring series.</div>';
     return;
   }
   if(!draftExpenseLink){
     box.className='expenseLinkBox empty';
-    box.innerHTML='<div class="expenseLinkTitle"><strong>No expense connected</strong></div><div class="expenseLinkMeta">Connect an existing Expense Vault transaction to this appointment.</div><div class="expenseLinkActions"><button type="button" id="connectExpenseBtn">Connect expense</button></div>';
+    box.innerHTML='<div class="expenseLinkTitle"><strong>No finance transaction connected</strong></div><div class="expenseLinkMeta">Connect an existing expense or income entry from Expense Vault.</div><div class="expenseLinkActions"><button type="button" id="connectExpenseBtn">Connect transaction</button></div>';
     document.getElementById('connectExpenseBtn').onclick=openExpensePicker;
     return;
   }
-  const x=draftExpenseLink;
+  const x=draftExpenseLink,isIncome=financeType(x)==='income';
   box.className='expenseLinkBox';
-  box.innerHTML='<div class="expenseLinkTitle"><strong>'+escapeHtml(x.merchant||'Expense')+'</strong><strong>Total '+escapeHtml(moneyEUR(expenseTotal(x)))+'</strong></div>'+
-    '<div class="expenseLinkMeta"><strong>Me '+escapeHtml(moneyEUR(x.amount))+'</strong> · '+escapeHtml([x.category,x.date,x.time,x.payment].filter(Boolean).join(' · '))+'</div>'+
-    '<div class="expenseLinkActions"><button type="button" id="changeExpenseBtn">Change</button><button type="button" id="refreshExpenseBtn">Refresh</button><button type="button" id="removeExpenseBtn">Remove</button></div>';
-  document.getElementById('changeExpenseBtn').onclick=openExpensePicker;
-  document.getElementById('refreshExpenseBtn').onclick=refreshLinkedExpense;
-  document.getElementById('removeExpenseBtn').onclick=()=>{draftExpenseLink=null;syncExpenseNoteLine(null);renderExpenseLink();};
+  const actions='<div class="expenseLinkActions"><button type="button" class="financeChangeBtn">Change</button><button type="button" class="financeRefreshBtn">Refresh</button><button type="button" class="financeRemoveBtn">Remove</button></div>';
+  box.innerHTML=isIncome
+    ? '<div class="expenseLinkTitle"><strong>'+escapeHtml(x.merchant||'Income')+'</strong><strong class="incomeText">+'+escapeHtml(moneyEUR(x.amount))+'</strong></div>'+
+      '<div class="expenseLinkMeta"><strong>Income</strong> · '+escapeHtml([x.category,x.date,x.time,x.payment].filter(Boolean).join(' · '))+'</div>'+actions
+    : '<div class="expenseLinkTitle"><strong>'+escapeHtml(x.merchant||'Expense')+'</strong><strong>Total '+escapeHtml(moneyEUR(expenseTotal(x)))+'</strong></div>'+
+      '<div class="expenseLinkMeta"><strong>Me '+escapeHtml(moneyEUR(x.amount))+'</strong> · '+escapeHtml([x.category,x.date,x.time,x.payment].filter(Boolean).join(' · '))+'</div>'+actions;
+  box.querySelector('.financeChangeBtn').onclick=openExpensePicker;
+  box.querySelector('.financeRefreshBtn').onclick=refreshLinkedExpense;
+  box.querySelector('.financeRemoveBtn').onclick=()=>{draftExpenseLink=null;syncExpenseNoteLine(null);renderExpenseLink();};
 }
 function openIndexedDb(name,version,upgrade){
   return new Promise((resolve,reject)=>{
@@ -1556,7 +1584,7 @@ async function safelyLoadExpenseTransactions(){
   try{
     const state=await readExpenseVaultState();
     await saveExpenseVaultSafetyCopy(state);
-    return {ok:true,rows:(state.transactions||[]).filter(t=>(t.type||'expense')==='expense')};
+    return {ok:true,rows:(state.transactions||[]).filter(t=>['expense','income'].includes(String(t.type||'expense')))};
   }catch(e){
     return {ok:false,error:e?.message||'Expense Vault data could not be backed up/read.'};
   }
@@ -1566,19 +1594,26 @@ function renderExpensePickerRows(){
   const q=String(document.getElementById('expenseSearch')?.value||'').trim().toLowerCase();
   const apptDate=document.getElementById('fDate')?.value||'';
   let rows=expensePickerRows.slice();
-  if(q) rows=rows.filter(t=>[t.merchant,t.category,t.subcategory,t.date,t.time,t.payment,t.amount].join(' ').toLowerCase().includes(q));
+  if(financePickerFilter!=='all') rows=rows.filter(t=>String(t.type||'expense')===financePickerFilter);
+  if(q) rows=rows.filter(t=>[t.type,t.merchant,t.category,t.subcategory,t.date,t.time,t.payment,t.amount,t.receiptTotal].join(' ').toLowerCase().includes(q));
   rows.sort((a,b)=>{
     const ad=a.date===apptDate?0:1,bd=b.date===apptDate?0:1;
     if(ad!==bd) return ad-bd;
     return String(b.date||'').localeCompare(String(a.date||''))||String(b.time||'').localeCompare(String(a.time||''));
   });
-  status.textContent=rows.length+(rows.length===1?' expense':' expenses')+(apptDate?' · same-day items shown first':'');
+  status.textContent=rows.length+(rows.length===1?' transaction':' transactions')+(apptDate?' · same-day items shown first':'');
   list.innerHTML='';
   rows.slice(0,100).forEach(t=>{
     const b=document.createElement('button');b.type='button';b.className='expensePickItem';
-    const total=Number(t.receiptTotal??t.amount??0);
-    b.innerHTML='<div class="top"><span>'+escapeHtml(t.merchant||'Expense')+'</span><span>Total '+escapeHtml(moneyEUR(total))+'</span></div>'+
-      '<div class="meta"><strong>Me '+escapeHtml(moneyEUR(t.amount))+'</strong> · '+escapeHtml([t.category,t.subcategory,t.date,t.time,t.payment].filter(Boolean).join(' · '))+'</div>';
+    const isIncome=String(t.type||'expense')==='income';
+    if(isIncome){
+      b.innerHTML='<div class="top"><span>'+escapeHtml(t.merchant||'Income')+'</span><span class="incomeText">+'+escapeHtml(moneyEUR(t.amount))+'</span></div>'+
+        '<div class="meta"><strong>Income</strong> · '+escapeHtml([t.category,t.date,t.time,t.payment].filter(Boolean).join(' · '))+'</div>';
+    }else{
+      const total=Number(t.receiptTotal??t.amount??0);
+      b.innerHTML='<div class="top"><span>'+escapeHtml(t.merchant||'Expense')+'</span><span>Total '+escapeHtml(moneyEUR(total))+'</span></div>'+
+        '<div class="meta"><strong>Me '+escapeHtml(moneyEUR(t.amount))+'</strong> · '+escapeHtml([t.category,t.subcategory,t.date,t.time,t.payment].filter(Boolean).join(' · '))+'</div>';
+    }
     b.onclick=()=>{
       draftExpenseLink=expenseLinkSnapshot(t);
       syncExpenseNoteLine(draftExpenseLink);
@@ -1587,12 +1622,14 @@ function renderExpensePickerRows(){
     };
     list.appendChild(b);
   });
-  if(!rows.length) list.innerHTML='<div class="expenseEmpty">No matching expenses found.</div>';
+  if(!rows.length) list.innerHTML='<div class="expenseEmpty">No matching transactions found.</div>';
 }
 async function openExpensePicker(){
   if(editingSeriesId) return;
   const modal=document.getElementById('expensePickerModal'),list=document.getElementById('expensePickerList'),status=document.getElementById('expensePickerStatus');
   document.getElementById('expenseSearch').value='';
+  financePickerFilter='all';
+  document.querySelectorAll('[data-finance-filter]').forEach(btn=>btn.classList.toggle('active',btn.dataset.financeFilter==='all'));
   list.innerHTML='<div class="expenseEmpty">Backing up Expense Vault before connecting…</div>';
   status.textContent='';
   modal.classList.add('open');
@@ -1617,13 +1654,13 @@ async function refreshLinkedExpense(){
   renderExpenseLink();
 }
 async function hydrateExistingExpenseLinks(){
-  if(meta.expenseTotalHydrationV24Applied) return false;
+  if(meta.financeLinkHydrationV25Applied) return false;
   const linked=[];
   Object.values(data).forEach(dd=>{
     (dd.appts||[]).forEach(a=>{if(a?.expenseLink?.id) linked.push(a);});
   });
   if(!linked.length){
-    meta.expenseTotalHydrationV24Applied=true;
+    meta.financeLinkHydrationV25Applied=true;
     save();
     return false;
   }
@@ -1637,14 +1674,14 @@ async function hydrateExistingExpenseLinks(){
     const fresh=expenseLinkSnapshot(found);
     const old=JSON.stringify(a.expenseLink);
     a.expenseLink=fresh;
-    if(String(a.notes||'').split('\n').some(line=>/^Linked expense:\s*/i.test(line.trim()))){
-      const lines=String(a.notes||'').split('\n').filter(line=>!/^Linked expense:\s*/i.test(line.trim()));
+    if(String(a.notes||'').split('\n').some(line=>/^Linked (?:expense|income):\s*/i.test(line.trim()))){
+      const lines=String(a.notes||'').split('\n').filter(line=>!/^Linked (?:expense|income):\s*/i.test(line.trim()));
       lines.push(expenseNoteLine(fresh));
       a.notes=lines.join('\n').trim();
     }
     if(JSON.stringify(fresh)!==old) changed=true;
   });
-  meta.expenseTotalHydrationV24Applied=true;
+  meta.financeLinkHydrationV25Applied=true;
   save();
   return changed;
 }
@@ -1719,7 +1756,7 @@ function saveAppointmentFromModal(){
   let notes=document.getElementById('fNotes').value.trim();
   const expenseLink=editingSeriesId||repeat!=='none'?null:(draftExpenseLink?{...draftExpenseLink}:null);
   if(!expenseLink){
-    notes=notes.split('\n').filter(line=>!/^Linked expense:\s*/i.test(line.trim())).join('\n').trim();
+    notes=notes.split('\n').filter(line=>!/^Linked (?:expense|income):\s*/i.test(line.trim())).join('\n').trim();
   }
   const supportRole=workSupportRoleOf(editingAppt);
   const supportFields=editingAppt?.autoWorkSupport
@@ -1779,6 +1816,11 @@ document.getElementById('apptSave').addEventListener('click',saveAppointmentFrom
 document.getElementById('apptCancel').onclick=()=>{pendingReschedule=null;draftExpenseLink=null;clearApptError();document.getElementById('apptModal').classList.remove('open');};
 document.getElementById('expensePickerClose').onclick=()=>document.getElementById('expensePickerModal').classList.remove('open');
 document.getElementById('expenseSearch').addEventListener('input',renderExpensePickerRows);
+document.querySelectorAll('[data-finance-filter]').forEach(btn=>btn.addEventListener('click',()=>{
+  financePickerFilter=btn.dataset.financeFilter||'all';
+  document.querySelectorAll('[data-finance-filter]').forEach(x=>x.classList.toggle('active',x===btn));
+  renderExpensePickerRows();
+}));
 document.getElementById('fRepeat').onchange=e=>document.getElementById('repeatEveryWrap').classList.toggle('hidden',e.target.value!=='interval');
 document.getElementById('fTitle').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveAppointmentFromModal();}});
 document.getElementById('fWho').onchange=e=>setWho(e.target.value,'auto');
@@ -1924,17 +1966,17 @@ document.getElementById('rSave').onclick=()=>{
 // Backup / restore
 function downloadSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     const blob=new Blob([raw],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-expense-total-display-2026-10-13.json';
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-income-links-2026-10-13.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
 function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
     const p=JSON.parse(raw);
