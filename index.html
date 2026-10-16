@@ -602,8 +602,9 @@ const SAFETY_BACKUP_KEY_V22='max-planner-safety-pre-expense-link-2026-10-12';
 const SAFETY_BACKUP_KEY_V24='max-planner-safety-pre-expense-total-display-2026-10-13';
 const SAFETY_BACKUP_KEY_V25='max-planner-safety-pre-income-links-2026-10-13';
 const SAFETY_BACKUP_KEY_V26='max-planner-safety-pre-note-display-performance-2026-10-13';
-const VERSION=26;
-const APP_BUILD='PWA 1.13.1';
+const SAFETY_BACKUP_KEY_V27='max-planner-safety-pre-todo-backward-move-2026-10-16';
+const VERSION=27;
+const APP_BUILD='PWA 1.13.2';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -691,6 +692,14 @@ try{
     localStorage.setItem(SAFETY_BACKUP_KEY_V26,JSON.stringify({
       app:'Max Planner',
       snapshot:'Pre-note-display-performance safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V27)){
+    localStorage.setItem(SAFETY_BACKUP_KEY_V27,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-to-do-backward-move safety backup',
       createdAt:new Date().toISOString(),
       data,recurring,meta
     }));
@@ -1919,14 +1928,17 @@ function todoActions(t,key){
   const actions=[];
   if(t.status!=='completed')actions.push({label:'✓ Completed',cls:'good',fn:()=>{t.status='completed';save();render();}});
   else actions.push({label:'Mark as pending',fn:()=>{t.status='pending';save();render();}});
-  actions.push({label:'Not completed → move to tomorrow',fn:()=>moveTodoTomorrow(t,key)});
+  actions.push({label:'← Move to previous day',fn:()=>moveTodoByDays(t,key,-1)});
+  actions.push({label:'Not completed → move to tomorrow',fn:()=>moveTodoByDays(t,key,1)});
   actions.push({label:'Edit',fn:()=>editTextItem('todo',t,key)});
   actions.push({label:'Delete',cls:'bad',fn:()=>{const dd=dayData(key);dd.todos=dd.todos.filter(x=>x.id!==t.id);save();render();}});
   showActions(t.text,actions);
 }
-function moveTodoTomorrow(t,key){
+function moveTodoByDays(t,key,days){
   const dd=dayData(key);dd.todos=dd.todos.filter(x=>x.id!==t.id);
-  const nk=iso(dateAdd(parseIso(key),1));dayData(nk).todos.push({...t,id:uid('t'),status:'pending'});save();render();
+  const nk=iso(dateAdd(parseIso(key),days));
+  dayData(nk).todos.push({...t,id:uid('t'),status:'pending'});
+  save();render();
 }
 function noteActions(n,key){
   showActions(n.text,[{label:'Move to tomorrow',fn:()=>{const dd=dayData(key);dd.noteItems=dd.noteItems.filter(x=>x.id!==n.id);dayData(iso(dateAdd(parseIso(key),1))).noteItems.push({...n,id:uid('n')});save();render();}},{label:'Edit',fn:()=>editTextItem('note',n,key)},{label:'Delete',cls:'bad',fn:()=>{const dd=dayData(key);dd.noteItems=dd.noteItems.filter(x=>x.id!==n.id);save();render();}}]);
@@ -1994,17 +2006,17 @@ document.getElementById('rSave').onclick=()=>{
 // Backup / restore
 function downloadSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     const blob=new Blob([raw],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-note-display-performance-2026-10-13.json';
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-todo-backward-move-2026-10-16.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
 function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
     const p=JSON.parse(raw);
