@@ -636,8 +636,8 @@ const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-1
 const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
 const SAFETY_BACKUP_KEY_V39='max-planner-safety-pre-roster-oct26-nov1-2026';
-const VERSION=40;
-const APP_BUILD='PWA 1.18.5';
+const VERSION=41;
+const APP_BUILD='PWA 1.19.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -919,6 +919,9 @@ function repeatLabel(r){
   return 'Does not repeat';
 }
 const GOOGLE_CALENDAR_CLIENT_ID='472362575652-33sufdi0inj2kljqrg81587vq7c15fhc.apps.googleusercontent.com';
+const GOOGLE_CALENDAR_REDIRECT_URI='https://maxi1412.github.io/max-planner/';
+const GOOGLE_CALENDAR_OAUTH_STATE_KEY='max-planner-google-calendar-oauth-state';
+const GOOGLE_CALENDAR_OAUTH_INTENT_KEY='max-planner-google-calendar-oauth-intent';
 const MUM_GOOGLE_EMAIL='martina.orihuela@gmail.com';
 const GOOGLE_DRIVE_CLIENT_ID='11523095308-dj5t16l7bumo2rki9b7kstv85q9ff18j.apps.googleusercontent.com';
 const GOOGLE_CALENDAR_SCOPE='https://www.googleapis.com/auth/calendar.readonly';
@@ -927,10 +930,6 @@ const GOOGLE_SYNC_SOURCE='google-calendar-mum';
 const GOOGLE_TOKEN_SESSION_KEY='max-planner-google-calendar-token';
 const GOOGLE_DRIVE_TOKEN_SESSION_KEY='max-planner-google-drive-token';
 const GOOGLE_DRIVE_BACKUP_FILENAME='max-planner-backup.json';
-let googleTokenClient=null;
-let googleTokenPendingReject=null;
-let googleCalendarAuthReady=false;
-let googleCalendarAuthLoadError='';
 let googleAccessToken='';
 let googleAccessTokenExpiry=0;
 let googleSyncInProgress=false;
@@ -1915,98 +1914,89 @@ function loadGoogleIdentityScript(){
     document.head.appendChild(s);
   });
 }
-function createGoogleCalendarTokenClient(){
-  if(!window.google?.accounts?.oauth2) throw new Error('Google sign-in library is not ready.');
-  if(googleTokenClient) return googleTokenClient;
-  googleTokenClient=google.accounts.oauth2.initTokenClient({
-    client_id:GOOGLE_CALENDAR_CLIENT_ID,
-    scope:GOOGLE_CALENDAR_SCOPE,
-    callback:()=>{},
-    error_callback:(err)=>{
-      if(!googleTokenPendingReject) return;
-      const reject=googleTokenPendingReject;
-      googleTokenPendingReject=null;
-      const type=String(err?.type||'');
-      if(type==='popup_failed_to_open'){
-        reject(new Error('Google sign-in could not open. Please allow the Google sign-in window and try again.'));
-      }else if(type==='popup_closed'){
-        reject(new Error('Google sign-in was closed before Calendar authorization finished.'));
-      }else{
-        reject(new Error('Google Calendar authorization could not start.'));
-      }
-    }
-  });
-  googleCalendarAuthReady=true;
-  googleCalendarAuthLoadError='';
-  return googleTokenClient;
+function randomGoogleOAuthState(){
+  const bytes=new Uint32Array(4);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes,n=>n.toString(16).padStart(8,'0')).join('');
 }
-async function preloadGoogleCalendarAuth(){
-  const btn=document.getElementById('googleConnectMumDirectBtn');
-  if(btn){btn.disabled=true;btn.textContent='Preparing Google Calendar…';}
+function startGoogleCalendarRedirectAuth({chooseAccount=false}={}){
+  const state=randomGoogleOAuthState();
   try{
-    await loadGoogleIdentityScript();
-    createGoogleCalendarTokenClient();
-    if(btn){btn.disabled=false;btn.textContent='Connect Martina · '+MUM_GOOGLE_EMAIL;}
+    sessionStorage.setItem(GOOGLE_CALENDAR_OAUTH_STATE_KEY,state);
+    sessionStorage.setItem(GOOGLE_CALENDAR_OAUTH_INTENT_KEY,JSON.stringify({
+      chooseAccount:!!chooseAccount,
+      startedAt:new Date().toISOString()
+    }));
+  }catch(e){}
+
+  const params=new URLSearchParams({
+    client_id:GOOGLE_CALENDAR_CLIENT_ID,
+    redirect_uri:GOOGLE_CALENDAR_REDIRECT_URI,
+    response_type:'token',
+    scope:GOOGLE_CALENDAR_SCOPE,
+    include_granted_scopes:'true',
+    state
+  });
+  if(chooseAccount){
+    params.set('prompt','select_account consent');
+  }else{
+    params.set('prompt','consent');
+    params.set('login_hint',MUM_GOOGLE_EMAIL);
+  }
+
+  updateGoogleCalendarStatus('Opening Google Calendar authorization…');
+  window.location.assign('https://accounts.google.com/o/oauth2/v2/auth?'+params.toString());
+}
+function cleanGoogleOAuthHash(){
+  try{
+    history.replaceState(null,'',location.pathname+location.search);
+  }catch(e){}
+}
+async function handleGoogleCalendarOAuthReturn(){
+  const raw=String(location.hash||'');
+  if(!raw || (!raw.includes('access_token=')&&!raw.includes('error='))) return false;
+
+  const p=new URLSearchParams(raw.replace(/^#/,''));
+  const returnedState=String(p.get('state')||'');
+  let expectedState='';
+  try{expectedState=String(sessionStorage.getItem(GOOGLE_CALENDAR_OAUTH_STATE_KEY)||'');}catch(e){}
+  try{
+    sessionStorage.removeItem(GOOGLE_CALENDAR_OAUTH_STATE_KEY);
+    sessionStorage.removeItem(GOOGLE_CALENDAR_OAUTH_INTENT_KEY);
+  }catch(e){}
+  cleanGoogleOAuthHash();
+
+  if(!expectedState || returnedState!==expectedState){
+    const msg='Google Calendar authorization could not be verified. Please connect again.';
+    meta.googleCalendar={...(meta.googleCalendar||{}),connected:false,lastError:msg,lastErrorAt:new Date().toISOString()};
+    persistPlannerLocal();
+    updateGoogleCalendarStatus('Google Calendar: '+msg);
+    alert(msg);
     return true;
-  }catch(e){
-    googleCalendarAuthReady=false;
-    googleCalendarAuthLoadError=String(e?.message||e);
-    if(btn){btn.disabled=false;btn.textContent='Retry Google Calendar connection';}
-    return false;
   }
-}
-function requestGoogleCalendarTokenFromGesture(promptMode='consent',loginHint=MUM_GOOGLE_EMAIL){
-  return new Promise((resolve,reject)=>{
-    try{
-      if(!googleCalendarAuthReady||!googleTokenClient){
-        reject(new Error(googleCalendarAuthLoadError||'Google Calendar sign-in is still loading. Tap Connect again in a moment.'));
-        return;
-      }
-      googleTokenPendingReject=reject;
-      googleTokenClient.callback=(resp)=>{
-        googleTokenPendingReject=null;
-        if(resp?.error){reject(new Error(resp.error_description||resp.error));return;}
-        if(!resp?.access_token){reject(new Error('Google did not return a Calendar access token.'));return;}
-        if(!google.accounts.oauth2.hasGrantedAllScopes(resp,GOOGLE_CALENDAR_SCOPE)){
-          reject(new Error('Google Calendar read permission was not granted.'));
-          return;
-        }
-        persistGoogleSessionToken(resp.access_token,resp.expires_in);
-        resolve(resp.access_token);
-      };
-      const request={prompt:promptMode};
-      if(loginHint) request.login_hint=loginHint;
-      googleTokenClient.requestAccessToken(request);
-    }catch(e){
-      googleTokenPendingReject=null;
-      reject(e);
-    }
-  });
-}
-async function requestGoogleCalendarTokenBackground(promptMode='',loginHint=MUM_GOOGLE_EMAIL){
-  if(!googleCalendarAuthReady||!googleTokenClient){
-    await preloadGoogleCalendarAuth();
+
+  const oauthError=String(p.get('error')||'');
+  if(oauthError){
+    const desc=String(p.get('error_description')||oauthError).replace(/\+/g,' ');
+    meta.googleCalendar={...(meta.googleCalendar||{}),connected:false,lastError:desc,lastErrorAt:new Date().toISOString()};
+    persistPlannerLocal();
+    updateGoogleCalendarStatus('Google Calendar: '+desc);
+    alert('Google Calendar authorization failed: '+desc);
+    return true;
   }
-  if(!googleCalendarAuthReady||!googleTokenClient){
-    throw new Error(googleCalendarAuthLoadError||'Google Calendar sign-in could not initialize.');
+
+  const token=String(p.get('access_token')||'');
+  const expiresIn=Number(p.get('expires_in')||3600);
+  if(!token){
+    const msg='Google did not return a Calendar access token.';
+    updateGoogleCalendarStatus('Google Calendar: '+msg);
+    alert(msg);
+    return true;
   }
-  return new Promise((resolve,reject)=>{
-    googleTokenPendingReject=reject;
-    googleTokenClient.callback=(resp)=>{
-      googleTokenPendingReject=null;
-      if(resp?.error){reject(new Error(resp.error_description||resp.error));return;}
-      if(!resp?.access_token){reject(new Error('Google did not return a Calendar access token.'));return;}
-      if(!google.accounts.oauth2.hasGrantedAllScopes(resp,GOOGLE_CALENDAR_SCOPE)){
-        reject(new Error('Google Calendar read permission was not granted.'));
-        return;
-      }
-      persistGoogleSessionToken(resp.access_token,resp.expires_in);
-      resolve(resp.access_token);
-    };
-    const request={prompt:promptMode};
-    if(loginHint) request.login_hint=loginHint;
-    googleTokenClient.requestAccessToken(request);
-  });
+
+  persistGoogleSessionToken(token,expiresIn);
+  await finishMumGoogleCalendarConnection(Promise.resolve(token),MUM_GOOGLE_EMAIL);
+  return true;
 }
 function localIsoDateFromDate(d){
   return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
@@ -2239,19 +2229,18 @@ function applyGoogleCalendarEvents(result){
   updateGoogleCalendarStatus();
   return incomingKeys.size;
 }
-async function syncMumGoogleCalendar({interactive=false,allowSilentRefresh=true}={}){
+async function syncMumGoogleCalendar({interactive=false}={}){
   if(googleSyncInProgress) return;
   googleSyncInProgress=true;
   updateGoogleCalendarStatus('Google Calendar: syncing…');
   try{
     let token=(googleAccessToken&&googleAccessTokenExpiry>Date.now())?googleAccessToken:'';
     if(!token&&restoreGoogleSessionToken()) token=googleAccessToken;
-    if(!token&&allowSilentRefresh){
-      try{token=await requestGoogleCalendarTokenBackground('',MUM_GOOGLE_EMAIL);}catch(e){}
-    }
     if(!token){
-      if(!interactive) throw new Error('Mum Google Calendar needs authorization.');
-      throw new Error('Mum Google Calendar needs authorization. Tap Connect Mum Google Calendar.');
+      const msg='Mum Google Calendar authorization expired. Tap Connect Mum Google Calendar.';
+      updateGoogleCalendarStatus('Google Calendar: '+msg);
+      if(interactive) alert(msg);
+      throw Object.assign(new Error(msg),{code:'AUTH_REQUIRED'});
     }
 
     const result=await fetchGoogleCalendarEvents(token);
@@ -2276,17 +2265,12 @@ async function syncMumGoogleCalendar({interactive=false,allowSilentRefresh=true}
     if(e?.code===401) persistGoogleSessionToken('',0);
     meta.googleCalendar={...(meta.googleCalendar||{}),lastError:String(e?.message||e),lastErrorAt:new Date().toISOString()};
     persistPlannerLocal();
-    updateGoogleCalendarStatus('Google Calendar: '+(e?.message||'sync failed'));
-    if(interactive) alert(e?.message||'Google Calendar sync failed.');
+    if(e?.code!=='AUTH_REQUIRED') updateGoogleCalendarStatus('Google Calendar: '+(e?.message||'sync failed'));
+    if(interactive&&e?.code!=='AUTH_REQUIRED') alert(e?.message||'Google Calendar sync failed.');
     throw e;
   }finally{
     googleSyncInProgress=false;
   }
-}
-function connectMumGoogleCalendarFromTap(loginHint=MUM_GOOGLE_EMAIL){
-  updateGoogleCalendarStatus(loginHint?'Google Calendar: connecting Martina…':'Google Calendar: choose account…');
-  const tokenPromise=requestGoogleCalendarTokenFromGesture(loginHint?'consent':'select_account consent',loginHint||'');
-  return finishMumGoogleCalendarConnection(tokenPromise,loginHint);
 }
 async function finishMumGoogleCalendarConnection(tokenPromise,loginHint=MUM_GOOGLE_EMAIL){
   try{
@@ -2321,12 +2305,10 @@ async function finishMumGoogleCalendarConnection(tokenPromise,loginHint=MUM_GOOG
 function openMumGoogleAccountChooser(){
   document.getElementById('menuModal').classList.remove('open');
   document.getElementById('googleAccountModal').classList.add('open');
-  if(!googleCalendarAuthReady&&!googleCalendarAuthLoadError) preloadGoogleCalendarAuth();
 }
 function disconnectMumGoogleCalendar(){
   const token=googleAccessToken;
   persistGoogleSessionToken('',0);
-  googleTokenPendingReject=null;
   clearInterval(googleAutoSyncTimer);
   googleAutoSyncTimer=null;
   if(token&&window.google?.accounts?.oauth2?.revoke){
@@ -2342,23 +2324,23 @@ function startAutomaticGoogleSync(){
   if(!meta.googleCalendar?.connected) return;
   googleAutoSyncTimer=setInterval(()=>{
     if(document.visibilityState==='visible'){
-      syncMumGoogleCalendar({interactive:false,allowSilentRefresh:true}).catch(()=>{});
+      syncMumGoogleCalendar({interactive:false}).catch(()=>{});
     }
   },5*60*1000);
 }
 function scheduleAutomaticGoogleSync(){
   if(!meta.googleCalendar?.connected) return;
   startAutomaticGoogleSync();
-  runWhenIdle(()=>syncMumGoogleCalendar({interactive:false,allowSilentRefresh:true}).catch(()=>{}),1800);
+  runWhenIdle(()=>syncMumGoogleCalendar({interactive:false}).catch(()=>{}),1800);
 }
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='visible'&&meta.googleCalendar?.connected){
-    syncMumGoogleCalendar({interactive:false,allowSilentRefresh:true}).catch(()=>{});
+    syncMumGoogleCalendar({interactive:false}).catch(()=>{});
   }
 });
 window.addEventListener('focus',()=>{
   if(meta.googleCalendar?.connected){
-    syncMumGoogleCalendar({interactive:false,allowSilentRefresh:true}).catch(()=>{});
+    syncMumGoogleCalendar({interactive:false}).catch(()=>{});
   }
 });
 
@@ -3093,11 +3075,11 @@ document.getElementById('googleCalendarConnectBtn').onclick=openMumGoogleAccount
 document.getElementById('googleAccountCancelBtn').onclick=()=>document.getElementById('googleAccountModal').classList.remove('open');
 document.getElementById('googleConnectMumDirectBtn').onclick=()=>{
   document.getElementById('googleAccountModal').classList.remove('open');
-  connectMumGoogleCalendarFromTap(MUM_GOOGLE_EMAIL);
+  startGoogleCalendarRedirectAuth({chooseAccount:false});
 };
 document.getElementById('googleChooseExistingBtn').onclick=()=>{
   document.getElementById('googleAccountModal').classList.remove('open');
-  connectMumGoogleCalendarFromTap('');
+  startGoogleCalendarRedirectAuth({chooseAccount:true});
 };
 document.getElementById('googleCalendarSyncBtn').onclick=()=>syncMumGoogleCalendar({interactive:true}).catch(()=>{});
 document.getElementById('googleCalendarDisconnectBtn').onclick=()=>disconnectMumGoogleCalendar();
@@ -3179,8 +3161,10 @@ function runWhenIdle(fn,timeout=1200){
   if('requestIdleCallback' in window) requestIdleCallback(()=>fn(),{timeout});
   else setTimeout(fn,250);
 }
-preloadGoogleCalendarAuth();
 runWhenIdle(runStartupMaintenance,700);
+handleGoogleCalendarOAuthReturn().catch(e=>{
+  console.warn('Google Calendar OAuth return failed',e);
+});
 setTimeout(()=>{
   runWhenIdle(()=>{
     hydrateExistingExpenseLinks().then(changed=>{if(changed)render();}).catch(()=>{});
