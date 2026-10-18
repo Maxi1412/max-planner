@@ -608,8 +608,8 @@ const SAFETY_BACKUP_KEY_V25='max-planner-safety-pre-income-links-2026-10-13';
 const SAFETY_BACKUP_KEY_V26='max-planner-safety-pre-note-display-performance-2026-10-13';
 const SAFETY_BACKUP_KEY_V27='max-planner-safety-pre-todo-backward-move-2026-10-16';
 const SAFETY_BACKUP_KEY_V28='max-planner-safety-pre-google-calendar-sync-2026-10-18';
-const VERSION=28;
-const APP_BUILD='PWA 1.14.1';
+const VERSION=29;
+const APP_BUILD='PWA 1.14.2';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -852,7 +852,6 @@ function repeatLabel(r){
 }
 const GOOGLE_CALENDAR_CLIENT_ID='472362575652-33sufdi0inj2kljqrg81587vq7c15fhc.apps.googleusercontent.com';
 const GOOGLE_CALENDAR_SCOPE='https://www.googleapis.com/auth/calendar.readonly';
-const GOOGLE_CALENDAR_ID='primary';
 const GOOGLE_SYNC_SOURCE='google-calendar-mum';
 const GOOGLE_TOKEN_SESSION_KEY='max-planner-google-calendar-token';
 let googleTokenClient=null;
@@ -1425,7 +1424,8 @@ function googleStatusText(){
   if(!cfg.connected) return 'Google Calendar: not connected';
   if(cfg.lastSync){
     const d=new Date(cfg.lastSync);
-    return 'Mum Google Calendar · Last sync '+d.toLocaleString();
+    const n=Array.isArray(cfg.calendars)?cfg.calendars.length:0;
+    return 'Mum Google Calendar · '+n+' calendar'+(n===1?'':'s')+' · Last sync '+d.toLocaleString();
   }
   return 'Mum Google Calendar connected';
 }
@@ -1497,8 +1497,13 @@ function localIsoDateFromDate(d){
 function localTimeFromDate(d){
   return pad(d.getHours())+':'+pad(d.getMinutes());
 }
+function googleCalendarStableKey(calendarId,eventId){
+  return String(calendarId||'primary')+'::'+String(eventId||'');
+}
 function googleEventToAppointment(ev){
   if(!ev||ev.status==='cancelled'||!ev.id) return null;
+  const calendarId=String(ev._calendarId||'primary');
+  const calendarName=String(ev._calendarSummary||'');
   const allDay=!!ev.start?.date&&!ev.start?.dateTime;
   let key,start,end;
   if(allDay){
@@ -1521,8 +1526,11 @@ function googleEventToAppointment(ev){
   return {
     key,
     appt:{
-      id:'gcal-'+ev.id,
+      id:'gcal-'+btoa(unescape(encodeURIComponent(googleCalendarStableKey(calendarId,ev.id)))).replace(/=+$/,''),
       googleEventId:String(ev.id),
+      googleEventKey:googleCalendarStableKey(calendarId,ev.id),
+      googleCalendarId:calendarId,
+      googleCalendarName:calendarName,
       googleUpdated:String(ev.updated||''),
       googleHtmlLink:String(ev.htmlLink||''),
       source:GOOGLE_SYNC_SOURCE,
@@ -1539,36 +1547,84 @@ function googleEventToAppointment(ev){
     }
   };
 }
-async function fetchGoogleCalendarEvents(accessToken){
-  const now=new Date();
-  const min=new Date(now);min.setDate(min.getDate()-120);min.setHours(0,0,0,0);
-  const max=new Date(now);max.setDate(max.getDate()+365);max.setHours(23,59,59,999);
+function isGoogleSystemCalendar(cal){
+  const id=String(cal?.id||'').toLowerCase();
+  const summary=String(cal?.summary||'').toLowerCase();
+  return id.includes('#holiday@group.v.calendar.google.com') ||
+    id.includes('#contacts@group.v.calendar.google.com') ||
+    summary.includes('birthdays') ||
+    summary.includes('geburtstage') ||
+    summary.includes('holidays') ||
+    summary.includes('feiertage');
+}
+async function fetchGoogleCalendarList(accessToken){
   const items=[];
   let pageToken='';
   do{
     const params=new URLSearchParams({
-      timeMin:min.toISOString(),
-      timeMax:max.toISOString(),
-      singleEvents:'true',
-      showDeleted:'true',
-      orderBy:'startTime',
-      maxResults:'2500',
-      fields:'nextPageToken,items(id,status,summary,description,location,start,end,updated,htmlLink)'
+      maxResults:'250',
+      showHidden:'false',
+      fields:'nextPageToken,items(id,summary,primary,selected,accessRole,hidden,deleted)'
     });
     if(pageToken) params.set('pageToken',pageToken);
-    const res=await fetch('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(GOOGLE_CALENDAR_ID)+'/events?'+params.toString(),{
+    const res=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList?'+params.toString(),{
       headers:{Authorization:'Bearer '+accessToken}
     });
     if(res.status===401) throw Object.assign(new Error('Google authorization expired. Tap Connect Google Calendar again.'),{code:401});
     if(!res.ok){
       let detail='';try{detail=(await res.json())?.error?.message||'';}catch(e){}
-      throw new Error(detail||('Google Calendar request failed ('+res.status+').'));
+      throw new Error(detail||('Google Calendar list request failed ('+res.status+').'));
     }
     const json=await res.json();
     items.push(...(json.items||[]));
     pageToken=json.nextPageToken||'';
   }while(pageToken);
-  return {items,minKey:localIsoDateFromDate(min),maxKey:localIsoDateFromDate(max)};
+
+  return items.filter(cal=>{
+    if(!cal||cal.deleted||cal.hidden) return false;
+    if(isGoogleSystemCalendar(cal)) return false;
+    return ['owner','writer','reader','freeBusyReader'].includes(String(cal.accessRole||''));
+  });
+}
+async function fetchGoogleCalendarEvents(accessToken){
+  const now=new Date();
+  const min=new Date(now);min.setDate(min.getDate()-120);min.setHours(0,0,0,0);
+  const max=new Date(now);max.setDate(max.getDate()+365);max.setHours(23,59,59,999);
+  const calendars=await fetchGoogleCalendarList(accessToken);
+  const items=[];
+
+  for(const cal of calendars){
+    let pageToken='';
+    do{
+      const params=new URLSearchParams({
+        timeMin:min.toISOString(),
+        timeMax:max.toISOString(),
+        singleEvents:'true',
+        showDeleted:'true',
+        orderBy:'startTime',
+        maxResults:'2500',
+        fields:'nextPageToken,items(id,status,summary,description,location,start,end,updated,htmlLink)'
+      });
+      if(pageToken) params.set('pageToken',pageToken);
+      const res=await fetch('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cal.id)+'/events?'+params.toString(),{
+        headers:{Authorization:'Bearer '+accessToken}
+      });
+      if(res.status===401) throw Object.assign(new Error('Google authorization expired. Tap Connect Google Calendar again.'),{code:401});
+      if(!res.ok){
+        let detail='';try{detail=(await res.json())?.error?.message||'';}catch(e){}
+        throw new Error(detail||('Google Calendar request failed for '+(cal.summary||cal.id)+' ('+res.status+').'));
+      }
+      const json=await res.json();
+      items.push(...(json.items||[]).map(ev=>({...ev,_calendarId:cal.id,_calendarSummary:cal.summary||''})));
+      pageToken=json.nextPageToken||'';
+    }while(pageToken);
+  }
+  return {
+    items,
+    calendars:calendars.map(cal=>({id:cal.id,summary:cal.summary||'',primary:!!cal.primary})),
+    minKey:localIsoDateFromDate(min),
+    maxKey:localIsoDateFromDate(max)
+  };
 }
 function applyGoogleCalendarEvents(result){
   const minKey=result.minKey,maxKey=result.maxKey;
@@ -1576,19 +1632,21 @@ function applyGoogleCalendarEvents(result){
   Object.keys(data).forEach(key=>{
     if(key<minKey||key>maxKey) return;
     dayData(key).appts.forEach(a=>{
-      if(a.source===GOOGLE_SYNC_SOURCE&&a.googleEventId) existing.set(String(a.googleEventId),{key,appt:a});
+      if(a.source!==GOOGLE_SYNC_SOURCE||!a.googleEventId) return;
+      const stable=a.googleEventKey||googleCalendarStableKey(a.googleCalendarId||'primary',a.googleEventId);
+      existing.set(stable,{key,appt:a});
     });
   });
 
-  const incomingIds=new Set();
+  const incomingKeys=new Set();
   let imported=0,updated=0;
   result.items.forEach(ev=>{
     const converted=googleEventToAppointment(ev);
     if(!converted) return;
     if(converted.key<minKey||converted.key>maxKey) return;
-    const id=String(converted.appt.googleEventId);
-    incomingIds.add(id);
-    const found=existing.get(id);
+    const stable=String(converted.appt.googleEventKey);
+    incomingKeys.add(stable);
+    const found=existing.get(stable);
     if(!found){
       dayData(converted.key).appts.push(converted.appt);
       imported++;
@@ -1596,7 +1654,6 @@ function applyGoogleCalendarEvents(result){
     }
 
     const old=found.appt;
-    // Preserve planner-only information that Google Calendar does not own.
     const preserved={
       status:old.status||'pending',
       flag:!!old.flag,
@@ -1606,7 +1663,6 @@ function applyGoogleCalendarEvents(result){
       subcategory:'general',
       who:'mum'
     };
-    // If the notes were never manually changed, keep them synced with Google.
     const notesWereGoogleOwned=String(old.notes||'')===String(old.googleNotes||old.notes||'');
     const next={...old,...converted.appt,...preserved};
     next.googleNotes=converted.appt.googleNotes||'';
@@ -1624,28 +1680,31 @@ function applyGoogleCalendarEvents(result){
     updated++;
   });
 
-  // Remove only Google-imported appointments that disappeared/cancelled in the synced window.
   let removed=0;
   Object.keys(data).forEach(key=>{
     if(key<minKey||key>maxKey) return;
     const dd=dayData(key);
     const before=dd.appts.length;
-    dd.appts=dd.appts.filter(a=>a.source!==GOOGLE_SYNC_SOURCE||!a.googleEventId||incomingIds.has(String(a.googleEventId)));
+    dd.appts=dd.appts.filter(a=>{
+      if(a.source!==GOOGLE_SYNC_SOURCE||!a.googleEventId) return true;
+      const stable=a.googleEventKey||googleCalendarStableKey(a.googleCalendarId||'primary',a.googleEventId);
+      return incomingKeys.has(stable);
+    });
     removed+=before-dd.appts.length;
   });
 
   meta.googleCalendar={
     ...(meta.googleCalendar||{}),
     connected:true,
-    calendarId:GOOGLE_CALENDAR_ID,
+    calendars:(result.calendars||[]),
     lastSync:new Date().toISOString(),
     imported,updated,removed,
-    total:incomingIds.size
+    total:incomingKeys.size
   };
   save();
   render();
   updateGoogleCalendarStatus();
-  return incomingIds.size;
+  return incomingKeys.size;
 }
 async function syncMumGoogleCalendar({interactive=false}={}){
   if(googleSyncInProgress) return;
