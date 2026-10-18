@@ -635,8 +635,9 @@ const SAFETY_BACKUP_KEY_V30='max-planner-safety-pre-google-drive-autobackup-2026
 const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-10-18';
 const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
-const VERSION=38;
-const APP_BUILD='PWA 1.18.3';
+const SAFETY_BACKUP_KEY_V39='max-planner-safety-pre-roster-oct26-nov1-2026';
+const VERSION=39;
+const APP_BUILD='PWA 1.18.4';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -772,6 +773,14 @@ try{
     localStorage.setItem(SAFETY_BACKUP_KEY_V36,JSON.stringify({
       app:'Max Planner',
       snapshot:'Pre-Samsung-ICS-import safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V39)){
+    localStorage.setItem(SAFETY_BACKUP_KEY_V39,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-roster-Oct26-Nov1-2026 safety backup',
       createdAt:new Date().toISOString(),
       data,recurring,meta
     }));
@@ -1209,6 +1218,41 @@ if(!meta.workRosterOct12To25V20Applied){
     }
   });
   meta.workRosterOct12To25V20Applied=true;
+}
+
+// Confirmed restaurant roster from screenshot: 26 Oct – 1 Nov 2026.
+// Add-only migration; preserve every unrelated appointment and avoid duplicate shifts.
+if(!meta.workRosterOct26ToNov1V39Applied){
+  const workDates=[
+    '2026-10-26',
+    '2026-10-28',
+    '2026-10-29',
+    '2026-10-31',
+    '2026-11-01'
+  ];
+  workDates.forEach(key=>{
+    const dd=dayData(key);
+    const exists=dd.appts.some(a=>
+      isWorkShiftAppointment(a) &&
+      normalizeTime(a.start)==='19:00' &&
+      normalizeTime(a.end)==='23:00' &&
+      a.status!=='cancelled'
+    );
+    if(!exists){
+      dd.appts.push({
+        id:uid('a'),
+        start:'19:00',
+        end:'23:00',
+        title:'Work',
+        who:'work',
+        category:'work',
+        subcategory:'shift',
+        colorKey:'auto',
+        status:'pending'
+      });
+    }
+  });
+  meta.workRosterOct26ToNov1V39Applied=true;
 }
 
 // Important job interview confirmed via Calendly for 6 Oct 2026.
@@ -2876,17 +2920,17 @@ document.getElementById('rSave').onclick=()=>{
 // Backup / restore
 function downloadSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V36)||localStorage.getItem(SAFETY_BACKUP_KEY_V35)||localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V39)||localStorage.getItem(SAFETY_BACKUP_KEY_V36)||localStorage.getItem(SAFETY_BACKUP_KEY_V35)||localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     const blob=new Blob([raw],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-samsung-ics-import-2026-10-18.json';
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-roster-oct26-nov1-2026.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
 function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V36)||localStorage.getItem(SAFETY_BACKUP_KEY_V35)||localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V39)||localStorage.getItem(SAFETY_BACKUP_KEY_V36)||localStorage.getItem(SAFETY_BACKUP_KEY_V35)||localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
     const p=JSON.parse(raw);
