@@ -53,7 +53,7 @@ function environment(values={},fetcher=async()=>{throw new Error('Unexpected net
 }
 async function app(values={},fetcher){
   const env=environment(values,fetcher);
-  const expose=`\nreturn {getState:()=>({data,recurring,meta}),setState:value=>{data=value.data;recurring=value.recurring||[];meta=value.meta||{};},runStartupMaintenance,fetchGoogleCalendarEvents,applyGoogleCalendarEvents,saveAppointmentFromModal,openAppointmentModal,googleEventToAppointment,uploadDriveBackup,manualDriveBackup,ensureDriveTokenClient,setDriveToken:()=>persistDriveSessionToken('test-token',3600),setDate:value=>{current=value;},renderDay,buildPrintWeek};`;
+  const expose=`\nreturn {getState:()=>({data,recurring,meta}),setState:value=>{data=value.data;recurring=value.recurring||[];meta=value.meta||{};},runStartupMaintenance,fetchGoogleCalendarEvents,applyGoogleCalendarEvents,saveAppointmentFromModal,openAppointmentModal,googleEventToAppointment,uploadDriveBackup,manualDriveBackup,ensureDriveTokenClient,driveBackupStatusInfo,setDriveToken:()=>persistDriveSessionToken('test-token',3600),setDate:value=>{current=value;},renderDay,buildPrintWeek};`;
   env.api=await vm.runInContext('(async()=>{'+main+expose+'})()',env.context);return env;
 }
 const existing=()=>({data:{'2026-10-12':{appts:[{id:'manual',title:'Appointment entered by Max',start:'11:00',end:'12:00',who:'mum',category:'health',notes:'Keep these details',status:'completed',flag:true,expenseLink:{id:'finance-1',amount:25},customReference:'from-user'},{id:'gpt',title:'Record entered through GPT',start:'18:00',end:'18:45',who:'work',notes:'Keep this too',status:'pending'}],todos:[{id:'todo-1',text:'User task',status:'pending'}],noteItems:[{id:'note-1',text:'User note'}]}},recurring:[{id:'custom-recurring',type:'reminder',title:'User recurring reminder',startDate:'2026-10-01',repeat:'weekly',who:'mum'}],meta:{disabledDefaults:['d1']}});
@@ -185,6 +185,24 @@ test('service-worker cache failure does not block a working network response',as
     vm.createContext(ctx);vm.runInContext(fs.readFileSync(path.join(root,'sw.js'),'utf8'),ctx);
     let pending;handlers.fetch({request:new Request('https://example.test/max-planner/index.html'),respondWith:value=>pending=value});assert.equal(await (await pending).text(),'Working planner');
   }
+});
+test('the actual appointment editor retains the Google identity and local notes during sync',async()=>{
+  const env=await app(),original=appointment();
+  env.api.setState({data:{'2026-10-18':{appts:[original],todos:[],noteItems:[]}},recurring:[],meta:{disabledDefaults:[]}});
+  env.api.openAppointmentModal(original,'2026-10-18');
+  env.elements.get('fTitle').value='Edited through the actual form';env.elements.get('fNotes').value='My form note';
+  assert.equal(env.api.saveAppointmentFromModal(),true);
+  for(let i=0;i<3;i++)env.api.applyGoogleCalendarEvents(result([event()]));
+  const entries=Object.values(env.api.getState().data).flatMap(day=>day.appts);
+  assert.equal(entries.filter(entry=>entry.googleEventKey===eventKey).length,1);
+  const kept=entries.find(entry=>entry.googleEventKey===eventKey);assert.equal(kept.title,'Edited through the actual form');assert.equal(kept.notes,'My form note');
+});
+test('Drive status never claims automatic backup is on for an unverified destination or a failed upload',async()=>{
+  const env=await app();env.api.setDriveToken();
+  env.api.setState({data:{},recurring:[],meta:{driveBackup:{enabled:true,fileId:'legacy-file'}}});
+  assert.equal(env.api.driveBackupStatusInfo().state,'paused');
+  env.api.setState({data:{},recurring:[],meta:{driveBackup:{enabled:true,deviceId:'test-device',lastError:'Upload failed'}}});
+  assert.equal(env.api.driveBackupStatusInfo().state,'error');
 });
 test('HTTP errors do not overwrite a working offline shell',async()=>{
   const handlers={},stored=new Map([['https://example.test/max-planner/index.html',new Response('Saved planner')]]);

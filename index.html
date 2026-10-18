@@ -1462,6 +1462,12 @@ function driveBackupStatusInfo(){
       button:'Connect My Google Drive'
     };
   }
+  if(cfg.lastError){
+    return {state:'error',text:'Google Drive backup needs attention\n'+cfg.lastError+'\nLast successful backup: '+last,button:'Reconnect My Google Drive'};
+  }
+  if(cfg.deviceId!==PlannerSafety.deviceId()){
+    return {state:'paused',text:'Google Drive backup: PAUSED\nReconnect to create a separate backup for this device. Existing backups are kept.\nLast successful backup: '+last,button:'Reconnect My Google Drive'};
+  }
   if(hasActiveToken){
     return {
       state:'connected',
