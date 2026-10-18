@@ -752,7 +752,8 @@ function ensureWorkSupportBlocksForDay(key){
   const autos=dd.appts.filter(a=>a.autoWorkSupport);
 
   if(!work){
-    dd.appts=dd.appts.filter(a=>!a.autoWorkSupport);
+    // Keep work-support records that contain a user's edits, notes, links, or completion history.
+    dd.appts=dd.appts.filter(a=>!a.autoWorkSupport||a.manualWorkSupport||a.notes||a.expenseLink||a.status==='completed'||a.status==='cancelled');
     return;
   }
 

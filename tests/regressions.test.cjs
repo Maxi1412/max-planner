@@ -204,6 +204,14 @@ test('Drive status never claims automatic backup is on for an unverified destina
   env.api.setState({data:{},recurring:[],meta:{driveBackup:{enabled:true,deviceId:'test-device',lastError:'Upload failed'}}});
   assert.equal(env.api.driveBackupStatusInfo().state,'error');
 });
+test('startup retains edited work-support records and completion history even when a shift is absent',async()=>{
+  const env=await app();
+  const items=[{id:'edited-support',autoWorkSupport:true,manualWorkSupport:true,title:'My preparation',start:'17:00',end:'17:30',status:'pending'},{id:'completed-support',autoWorkSupport:true,title:'Completed preparation',start:'17:30',end:'18:00',status:'completed'},{id:'linked-support',autoWorkSupport:true,title:'Travel with a receipt',start:'18:00',end:'18:30',status:'pending',expenseLink:{id:'receipt-1'}}];
+  env.api.setState({data:{'2026-10-18':{appts:json(items),todos:[],noteItems:[]}},recurring:[],meta:{}});
+  env.api.runStartupMaintenance();
+  const remaining=env.api.getState().data['2026-10-18'].appts;
+  assert.equal(remaining.length,3);for(const item of items)assert.ok(remaining.some(x=>x.id===item.id));
+});
 test('HTTP errors do not overwrite a working offline shell',async()=>{
   const handlers={},stored=new Map([['https://example.test/max-planner/index.html',new Response('Saved planner')]]);
   const cache={put:async(key,value)=>stored.set(key,value),match:async key=>stored.get(key)?.clone()};
