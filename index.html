@@ -620,8 +620,8 @@ const SAFETY_BACKUP_KEY_V27='max-planner-safety-pre-todo-backward-move-2026-10-1
 const SAFETY_BACKUP_KEY_V28='max-planner-safety-pre-google-calendar-sync-2026-10-18';
 const SAFETY_BACKUP_KEY_V30='max-planner-safety-pre-google-drive-autobackup-2026-10-18';
 const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-10-18';
-const VERSION=33;
-const APP_BUILD='PWA 1.17.1';
+const VERSION=34;
+const APP_BUILD='PWA 1.17.2';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -1802,7 +1802,7 @@ async function ensureGoogleTokenClient(){
   });
   return googleTokenClient;
 }
-function requestGoogleCalendarToken(promptMode='consent'){
+function requestGoogleCalendarToken(promptMode='select_account consent'){
   return new Promise(async(resolve,reject)=>{
     try{
       const tc=await ensureGoogleTokenClient();
@@ -2040,7 +2040,7 @@ async function syncMumGoogleCalendar({interactive=false}={}){
     if(!token&&restoreGoogleSessionToken()) token=googleAccessToken;
     if(!token){
       if(!interactive) throw new Error('Tap Connect Google Calendar to authorize Mum’s account.');
-      token=await requestGoogleCalendarToken('consent');
+      token=await requestGoogleCalendarToken('select_account consent');
     }
     const result=await fetchGoogleCalendarEvents(token);
     const imported=applyGoogleCalendarEvents(result);
@@ -2056,9 +2056,9 @@ async function syncMumGoogleCalendar({interactive=false}={}){
   }
 }
 async function connectMumGoogleCalendar(){
-  updateGoogleCalendarStatus('Google Calendar: waiting for authorization…');
+  updateGoogleCalendarStatus('Google Calendar: choose Mum’s account / Use another account…');
   try{
-    const token=await requestGoogleCalendarToken('consent');
+    const token=await requestGoogleCalendarToken('select_account consent');
     const result=await fetchGoogleCalendarEvents(token);
     const imported=applyGoogleCalendarEvents(result);
     alert('Mum Google Calendar connected. '+imported+' events synced.');
