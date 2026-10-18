@@ -635,8 +635,8 @@ const SAFETY_BACKUP_KEY_V30='max-planner-safety-pre-google-drive-autobackup-2026
 const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-10-18';
 const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
-const VERSION=37;
-const APP_BUILD='PWA 1.18.2';
+const VERSION=38;
+const APP_BUILD='PWA 1.18.3';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -919,9 +919,11 @@ const GOOGLE_TOKEN_SESSION_KEY='max-planner-google-calendar-token';
 const GOOGLE_DRIVE_TOKEN_SESSION_KEY='max-planner-google-drive-token';
 const GOOGLE_DRIVE_BACKUP_FILENAME='max-planner-backup.json';
 let googleTokenClient=null;
+let googleTokenPendingReject=null;
 let googleAccessToken='';
 let googleAccessTokenExpiry=0;
 let googleSyncInProgress=false;
+let googleAutoSyncTimer=null;
 let driveTokenClient=null;
 let driveAccessToken='';
 let driveAccessTokenExpiry=0;
@@ -1874,61 +1876,45 @@ async function ensureGoogleTokenClient(){
     client_id:GOOGLE_CALENDAR_CLIENT_ID,
     scope:GOOGLE_CALENDAR_SCOPE,
     callback:()=>{},
-    error_callback:()=>{}
+    error_callback:(err)=>{
+      if(!googleTokenPendingReject) return;
+      const reject=googleTokenPendingReject;
+      googleTokenPendingReject=null;
+      const type=String(err?.type||'');
+      if(type==='popup_failed_to_open'){
+        reject(new Error('Google sign-in could not open. Please allow the Google sign-in window and try again.'));
+      }else if(type==='popup_closed'){
+        reject(new Error('Google sign-in was closed before Calendar authorization finished.'));
+      }else{
+        reject(new Error('Google Calendar authorization could not start.'));
+      }
+    }
   });
   return googleTokenClient;
 }
-function requestGoogleCalendarToken(promptMode='select_account consent',loginHint=''){
+function requestGoogleCalendarToken(promptMode='consent',loginHint=MUM_GOOGLE_EMAIL){
   return new Promise(async(resolve,reject)=>{
     try{
-      await loadGoogleIdentityScript();
-      let settled=false;
-      const finishReject=(message)=>{
-        if(settled) return;
-        settled=true;
-        reject(new Error(message));
-      };
-      const finishResolve=(resp)=>{
-        if(settled) return;
-        if(resp?.error){finishReject(resp.error_description||resp.error);return;}
-        if(!resp?.access_token){finishReject('Google did not return an access token.');return;}
-        settled=true;
+      const tc=await ensureGoogleTokenClient();
+      googleTokenPendingReject=reject;
+      tc.callback=(resp)=>{
+        googleTokenPendingReject=null;
+        if(resp?.error){reject(new Error(resp.error_description||resp.error));return;}
+        if(!resp?.access_token){reject(new Error('Google did not return a Calendar access token.'));return;}
+        if(!google.accounts.oauth2.hasGrantedAllScopes(resp,GOOGLE_CALENDAR_SCOPE)){
+          reject(new Error('Google Calendar read permission was not granted.'));
+          return;
+        }
         persistGoogleSessionToken(resp.access_token,resp.expires_in);
         resolve(resp.access_token);
       };
-
-      // Create a fresh token client for each authorization attempt.
-      // On Android/PWA this is more reliable than mutating a previously-created client,
-      // especially when login_hint is used for an account that is not already signed in.
-      const config={
-        client_id:GOOGLE_CALENDAR_CLIENT_ID,
-        scope:GOOGLE_CALENDAR_SCOPE,
-        include_granted_scopes:true,
-        prompt:promptMode,
-        callback:finishResolve,
-        error_callback:(err)=>{
-          const type=String(err?.type||'');
-          if(type==='popup_failed_to_open'){
-            finishReject('Google sign-in could not open. Please allow pop-ups for Max Planner and try again.');
-          }else if(type==='popup_closed'){
-            finishReject('Google sign-in was closed before authorization finished.');
-          }else{
-            finishReject('Google sign-in could not start. Please try again.');
-          }
-        }
-      };
-      if(loginHint) config.login_hint=loginHint;
-
-      googleTokenClient=google.accounts.oauth2.initTokenClient(config);
-      googleTokenClient.requestAccessToken();
-
-      // Avoid leaving Max Planner permanently waiting if Android opens a blank/failed OAuth window.
-      setTimeout(()=>{
-        if(!settled){
-          finishReject('Google sign-in did not complete. If Google reports that the maximum number of accounts is signed in, that browser account limit must be cleared before another Google account can be added.');
-        }
-      },30000);
-    }catch(e){reject(e);}
+      const request={prompt:promptMode};
+      if(loginHint) request.login_hint=loginHint;
+      tc.requestAccessToken(request);
+    }catch(e){
+      googleTokenPendingReject=null;
+      reject(e);
+    }
   });
 }
 function localIsoDateFromDate(d){
@@ -2004,13 +1990,14 @@ async function fetchGoogleCalendarList(accessToken){
     const params=new URLSearchParams({
       maxResults:'250',
       showHidden:'false',
+      minAccessRole:'reader',
       fields:'nextPageToken,items(id,summary,primary,selected,accessRole,hidden,deleted)'
     });
     if(pageToken) params.set('pageToken',pageToken);
     const res=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList?'+params.toString(),{
       headers:{Authorization:'Bearer '+accessToken}
     });
-    if(res.status===401) throw Object.assign(new Error('Google authorization expired. Tap Connect Google Calendar again.'),{code:401});
+    if(res.status===401) throw Object.assign(new Error('Google Calendar authorization expired.'),{code:401});
     if(!res.ok){
       let detail='';try{detail=(await res.json())?.error?.message||'';}catch(e){}
       throw new Error(detail||('Google Calendar list request failed ('+res.status+').'));
@@ -2023,18 +2010,24 @@ async function fetchGoogleCalendarList(accessToken){
   return items.filter(cal=>{
     if(!cal||cal.deleted||cal.hidden) return false;
     if(isGoogleSystemCalendar(cal)) return false;
-    return ['owner','writer','reader','freeBusyReader'].includes(String(cal.accessRole||''));
-  });
+    return ['owner','writer','writerWithoutPrivateAccess','reader'].includes(String(cal.accessRole||''));
+  }).sort((a,b)=>(b.primary?1:0)-(a.primary?1:0));
 }
 async function fetchGoogleCalendarEvents(accessToken){
   const now=new Date();
   const min=new Date(now);min.setDate(min.getDate()-120);min.setHours(0,0,0,0);
   const max=new Date(now);max.setDate(max.getDate()+365);max.setHours(23,59,59,999);
   const calendars=await fetchGoogleCalendarList(accessToken);
+  const primary=calendars.find(cal=>cal.primary);
+  if(!primary) throw new Error('Martina’s primary Google Calendar could not be found for the authorized account.');
+
   const items=[];
+  const syncedCalendars=[];
+  const skippedCalendars=[];
 
   for(const cal of calendars){
     let pageToken='';
+    let calendarOk=true;
     do{
       const params=new URLSearchParams({
         timeMin:min.toISOString(),
@@ -2049,19 +2042,28 @@ async function fetchGoogleCalendarEvents(accessToken){
       const res=await fetch('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cal.id)+'/events?'+params.toString(),{
         headers:{Authorization:'Bearer '+accessToken}
       });
-      if(res.status===401) throw Object.assign(new Error('Google authorization expired. Tap Connect Google Calendar again.'),{code:401});
+      if(res.status===401) throw Object.assign(new Error('Google Calendar authorization expired.'),{code:401});
       if(!res.ok){
         let detail='';try{detail=(await res.json())?.error?.message||'';}catch(e){}
-        throw new Error(detail||('Google Calendar request failed for '+(cal.summary||cal.id)+' ('+res.status+').'));
+        if(cal.primary){
+          throw new Error(detail||('Martina’s primary Google Calendar could not be read ('+res.status+').'));
+        }
+        skippedCalendars.push({id:cal.id,summary:cal.summary||'',status:res.status});
+        calendarOk=false;
+        break;
       }
       const json=await res.json();
       items.push(...(json.items||[]).map(ev=>({...ev,_calendarId:cal.id,_calendarSummary:cal.summary||''})));
       pageToken=json.nextPageToken||'';
     }while(pageToken);
+    if(calendarOk) syncedCalendars.push(cal);
   }
+
   return {
     items,
-    calendars:calendars.map(cal=>({id:cal.id,summary:cal.summary||'',primary:!!cal.primary})),
+    calendars:syncedCalendars.map(cal=>({id:cal.id,summary:cal.summary||'',primary:!!cal.primary})),
+    skippedCalendars,
+    primaryId:String(primary.id||''),
     minKey:localIsoDateFromDate(min),
     maxKey:localIsoDateFromDate(max)
   };
@@ -2146,23 +2148,43 @@ function applyGoogleCalendarEvents(result){
   updateGoogleCalendarStatus();
   return incomingKeys.size;
 }
-async function syncMumGoogleCalendar({interactive=false}={}){
+async function syncMumGoogleCalendar({interactive=false,allowSilentRefresh=true}={}){
   if(googleSyncInProgress) return;
   googleSyncInProgress=true;
   updateGoogleCalendarStatus('Google Calendar: syncing…');
   try{
     let token=(googleAccessToken&&googleAccessTokenExpiry>Date.now())?googleAccessToken:'';
     if(!token&&restoreGoogleSessionToken()) token=googleAccessToken;
-    if(!token){
-      if(!interactive) throw new Error('Tap Connect Google Calendar to authorize Mum’s account.');
-      token=await requestGoogleCalendarToken('select_account consent');
+    if(!token&&allowSilentRefresh){
+      try{token=await requestGoogleCalendarToken('',MUM_GOOGLE_EMAIL);}catch(e){}
     }
+    if(!token){
+      if(!interactive) throw new Error('Mum Google Calendar needs authorization.');
+      token=await requestGoogleCalendarToken('consent',MUM_GOOGLE_EMAIL);
+    }
+
     const result=await fetchGoogleCalendarEvents(token);
+    const primaryId=String(result.primaryId||'').toLowerCase();
+    if(primaryId!==MUM_GOOGLE_EMAIL.toLowerCase()){
+      persistGoogleSessionToken('',0);
+      throw new Error('Google authorized a different account. Martina Scheurer must be selected.');
+    }
+
     const imported=applyGoogleCalendarEvents(result);
-    updateGoogleCalendarStatus('Mum Google Calendar synced · '+imported+' events');
+    meta.googleCalendar={
+      ...(meta.googleCalendar||{}),
+      connected:true,
+      connectedEmail:MUM_GOOGLE_EMAIL,
+      lastSync:new Date().toISOString(),
+      lastError:''
+    };
+    save();
+    updateGoogleCalendarStatus();
     return imported;
   }catch(e){
     if(e?.code===401) persistGoogleSessionToken('',0);
+    meta.googleCalendar={...(meta.googleCalendar||{}),lastError:String(e?.message||e),lastErrorAt:new Date().toISOString()};
+    persistPlannerLocal();
     updateGoogleCalendarStatus('Google Calendar: '+(e?.message||'sync failed'));
     if(interactive) alert(e?.message||'Google Calendar sync failed.');
     throw e;
@@ -2171,33 +2193,32 @@ async function syncMumGoogleCalendar({interactive=false}={}){
   }
 }
 async function connectMumGoogleCalendar(loginHint=MUM_GOOGLE_EMAIL){
-  updateGoogleCalendarStatus(loginHint
-    ? 'Google Calendar: connecting '+loginHint+'…'
-    : 'Google Calendar: choose account…');
+  updateGoogleCalendarStatus('Google Calendar: connecting Martina…');
   try{
-    const token=await requestGoogleCalendarToken(loginHint?'consent':'select_account consent',loginHint);
+    const token=await requestGoogleCalendarToken('consent',loginHint||MUM_GOOGLE_EMAIL);
     const result=await fetchGoogleCalendarEvents(token);
-
-    if(loginHint){
-      const primary=(result.calendars||[]).find(cal=>cal.primary);
-      const primaryId=String(primary?.id||'').toLowerCase();
-      if(primaryId && primaryId!==String(loginHint).toLowerCase()){
-        persistGoogleSessionToken('',0);
-        throw new Error('Google connected a different account. Please choose Martina Scheurer / '+MUM_GOOGLE_EMAIL+'.');
-      }
+    const primaryId=String(result.primaryId||'').toLowerCase();
+    if(primaryId!==MUM_GOOGLE_EMAIL.toLowerCase()){
+      persistGoogleSessionToken('',0);
+      throw new Error('Google authorized a different account. Select Martina Scheurer / '+MUM_GOOGLE_EMAIL+'.');
     }
 
     const imported=applyGoogleCalendarEvents(result);
     meta.googleCalendar={
       ...(meta.googleCalendar||{}),
       connected:true,
-      connectedEmail:loginHint||meta.googleCalendar?.connectedEmail||'',
-      lastConnectedAt:new Date().toISOString()
+      connectedEmail:MUM_GOOGLE_EMAIL,
+      lastConnectedAt:new Date().toISOString(),
+      lastSync:new Date().toISOString(),
+      lastError:''
     };
     save();
-    updateGoogleCalendarStatus('✓ Mum Google Calendar connected · '+imported+' events synced');
+    startAutomaticGoogleSync();
+    updateGoogleCalendarStatus();
     alert('Mum Google Calendar connected. '+imported+' events synced.');
   }catch(e){
+    meta.googleCalendar={...(meta.googleCalendar||{}),connected:false,lastError:String(e?.message||e),lastErrorAt:new Date().toISOString()};
+    persistPlannerLocal();
     updateGoogleCalendarStatus('Google Calendar: '+(e?.message||'connection failed'));
     alert(e?.message||'Google Calendar connection failed.');
   }
@@ -2210,6 +2231,9 @@ function disconnectMumGoogleCalendar(){
   const token=googleAccessToken;
   persistGoogleSessionToken('',0);
   googleTokenClient=null;
+  googleTokenPendingReject=null;
+  clearInterval(googleAutoSyncTimer);
+  googleAutoSyncTimer=null;
   if(token&&window.google?.accounts?.oauth2?.revoke){
     try{google.accounts.oauth2.revoke(token,()=>{});}catch(e){}
   }
@@ -2217,11 +2241,31 @@ function disconnectMumGoogleCalendar(){
   save();
   updateGoogleCalendarStatus('Google Calendar: disconnected');
 }
+function startAutomaticGoogleSync(){
+  clearInterval(googleAutoSyncTimer);
+  googleAutoSyncTimer=null;
+  if(!meta.googleCalendar?.connected) return;
+  googleAutoSyncTimer=setInterval(()=>{
+    if(document.visibilityState==='visible'){
+      syncMumGoogleCalendar({interactive:false,allowSilentRefresh:true}).catch(()=>{});
+    }
+  },5*60*1000);
+}
 function scheduleAutomaticGoogleSync(){
   if(!meta.googleCalendar?.connected) return;
-  if(!restoreGoogleSessionToken()) return;
-  runWhenIdle(()=>syncMumGoogleCalendar({interactive:false}).catch(()=>{}),1800);
+  startAutomaticGoogleSync();
+  runWhenIdle(()=>syncMumGoogleCalendar({interactive:false,allowSilentRefresh:true}).catch(()=>{}),1800);
 }
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&meta.googleCalendar?.connected){
+    syncMumGoogleCalendar({interactive:false,allowSilentRefresh:true}).catch(()=>{});
+  }
+});
+window.addEventListener('focus',()=>{
+  if(meta.googleCalendar?.connected){
+    syncMumGoogleCalendar({interactive:false,allowSilentRefresh:true}).catch(()=>{});
+  }
+});
 
 function render(){
   syncStickyHeaderOffset();
