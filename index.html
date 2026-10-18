@@ -636,8 +636,8 @@ const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-1
 const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
 const SAFETY_BACKUP_KEY_V39='max-planner-safety-pre-roster-oct26-nov1-2026';
-const VERSION=42;
-const APP_BUILD='PWA 1.19.1';
+const VERSION=43;
+const APP_BUILD='PWA 1.19.2';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -919,7 +919,7 @@ function repeatLabel(r){
   return 'Does not repeat';
 }
 const GOOGLE_CALENDAR_CLIENT_ID='472362575652-33sufdi0inj2kljqrg81587vq7c15fhc.apps.googleusercontent.com';
-const GOOGLE_CALENDAR_BRIDGE_URL='https://maxi1412.github.io/expense-vault/google-calendar-connect.html';
+const GOOGLE_CALENDAR_BRIDGE_URL='https://maxi1412.github.io/formfill-lite/google-calendar-connect.html';
 const GOOGLE_CALENDAR_HANDOFF_KEY='max-planner-google-calendar-handoff-v1';
 const GOOGLE_CALENDAR_AUTH_CHANNEL='max-planner-google-calendar-auth';
 const MUM_GOOGLE_EMAIL='martina.orihuela@gmail.com';
@@ -1922,7 +1922,8 @@ function openGoogleCalendarBrowserBridge({chooseAccount=false}={}){
 
   // On Android force the helper into Chrome rather than the installed PWA window.
   if(/Android/i.test(navigator.userAgent)){
-    const intentTarget='maxi1412.github.io/expense-vault/google-calendar-connect.html?mode='+encodeURIComponent(mode)+'&ts='+Date.now();
+    const u=new URL(httpsUrl);
+    const intentTarget=u.host+u.pathname+u.search;
     const intent='intent://'+intentTarget+
       '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='+
       encodeURIComponent(httpsUrl)+';end';
