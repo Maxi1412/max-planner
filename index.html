@@ -636,8 +636,8 @@ const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-1
 const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
 const SAFETY_BACKUP_KEY_V39='max-planner-safety-pre-roster-oct26-nov1-2026';
-const VERSION=39;
-const APP_BUILD='PWA 1.18.4';
+const VERSION=40;
+const APP_BUILD='PWA 1.18.5';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -929,6 +929,8 @@ const GOOGLE_DRIVE_TOKEN_SESSION_KEY='max-planner-google-drive-token';
 const GOOGLE_DRIVE_BACKUP_FILENAME='max-planner-backup.json';
 let googleTokenClient=null;
 let googleTokenPendingReject=null;
+let googleCalendarAuthReady=false;
+let googleCalendarAuthLoadError='';
 let googleAccessToken='';
 let googleAccessTokenExpiry=0;
 let googleSyncInProgress=false;
@@ -1913,8 +1915,8 @@ function loadGoogleIdentityScript(){
     document.head.appendChild(s);
   });
 }
-async function ensureGoogleTokenClient(){
-  await loadGoogleIdentityScript();
+function createGoogleCalendarTokenClient(){
+  if(!window.google?.accounts?.oauth2) throw new Error('Google sign-in library is not ready.');
   if(googleTokenClient) return googleTokenClient;
   googleTokenClient=google.accounts.oauth2.initTokenClient({
     client_id:GOOGLE_CALENDAR_CLIENT_ID,
@@ -1934,14 +1936,34 @@ async function ensureGoogleTokenClient(){
       }
     }
   });
+  googleCalendarAuthReady=true;
+  googleCalendarAuthLoadError='';
   return googleTokenClient;
 }
-function requestGoogleCalendarToken(promptMode='consent',loginHint=MUM_GOOGLE_EMAIL){
-  return new Promise(async(resolve,reject)=>{
+async function preloadGoogleCalendarAuth(){
+  const btn=document.getElementById('googleConnectMumDirectBtn');
+  if(btn){btn.disabled=true;btn.textContent='Preparing Google Calendar…';}
+  try{
+    await loadGoogleIdentityScript();
+    createGoogleCalendarTokenClient();
+    if(btn){btn.disabled=false;btn.textContent='Connect Martina · '+MUM_GOOGLE_EMAIL;}
+    return true;
+  }catch(e){
+    googleCalendarAuthReady=false;
+    googleCalendarAuthLoadError=String(e?.message||e);
+    if(btn){btn.disabled=false;btn.textContent='Retry Google Calendar connection';}
+    return false;
+  }
+}
+function requestGoogleCalendarTokenFromGesture(promptMode='consent',loginHint=MUM_GOOGLE_EMAIL){
+  return new Promise((resolve,reject)=>{
     try{
-      const tc=await ensureGoogleTokenClient();
+      if(!googleCalendarAuthReady||!googleTokenClient){
+        reject(new Error(googleCalendarAuthLoadError||'Google Calendar sign-in is still loading. Tap Connect again in a moment.'));
+        return;
+      }
       googleTokenPendingReject=reject;
-      tc.callback=(resp)=>{
+      googleTokenClient.callback=(resp)=>{
         googleTokenPendingReject=null;
         if(resp?.error){reject(new Error(resp.error_description||resp.error));return;}
         if(!resp?.access_token){reject(new Error('Google did not return a Calendar access token.'));return;}
@@ -1954,11 +1976,36 @@ function requestGoogleCalendarToken(promptMode='consent',loginHint=MUM_GOOGLE_EM
       };
       const request={prompt:promptMode};
       if(loginHint) request.login_hint=loginHint;
-      tc.requestAccessToken(request);
+      googleTokenClient.requestAccessToken(request);
     }catch(e){
       googleTokenPendingReject=null;
       reject(e);
     }
+  });
+}
+async function requestGoogleCalendarTokenBackground(promptMode='',loginHint=MUM_GOOGLE_EMAIL){
+  if(!googleCalendarAuthReady||!googleTokenClient){
+    await preloadGoogleCalendarAuth();
+  }
+  if(!googleCalendarAuthReady||!googleTokenClient){
+    throw new Error(googleCalendarAuthLoadError||'Google Calendar sign-in could not initialize.');
+  }
+  return new Promise((resolve,reject)=>{
+    googleTokenPendingReject=reject;
+    googleTokenClient.callback=(resp)=>{
+      googleTokenPendingReject=null;
+      if(resp?.error){reject(new Error(resp.error_description||resp.error));return;}
+      if(!resp?.access_token){reject(new Error('Google did not return a Calendar access token.'));return;}
+      if(!google.accounts.oauth2.hasGrantedAllScopes(resp,GOOGLE_CALENDAR_SCOPE)){
+        reject(new Error('Google Calendar read permission was not granted.'));
+        return;
+      }
+      persistGoogleSessionToken(resp.access_token,resp.expires_in);
+      resolve(resp.access_token);
+    };
+    const request={prompt:promptMode};
+    if(loginHint) request.login_hint=loginHint;
+    googleTokenClient.requestAccessToken(request);
   });
 }
 function localIsoDateFromDate(d){
@@ -2200,11 +2247,11 @@ async function syncMumGoogleCalendar({interactive=false,allowSilentRefresh=true}
     let token=(googleAccessToken&&googleAccessTokenExpiry>Date.now())?googleAccessToken:'';
     if(!token&&restoreGoogleSessionToken()) token=googleAccessToken;
     if(!token&&allowSilentRefresh){
-      try{token=await requestGoogleCalendarToken('',MUM_GOOGLE_EMAIL);}catch(e){}
+      try{token=await requestGoogleCalendarTokenBackground('',MUM_GOOGLE_EMAIL);}catch(e){}
     }
     if(!token){
       if(!interactive) throw new Error('Mum Google Calendar needs authorization.');
-      token=await requestGoogleCalendarToken('consent',MUM_GOOGLE_EMAIL);
+      throw new Error('Mum Google Calendar needs authorization. Tap Connect Mum Google Calendar.');
     }
 
     const result=await fetchGoogleCalendarEvents(token);
@@ -2236,10 +2283,14 @@ async function syncMumGoogleCalendar({interactive=false,allowSilentRefresh=true}
     googleSyncInProgress=false;
   }
 }
-async function connectMumGoogleCalendar(loginHint=MUM_GOOGLE_EMAIL){
-  updateGoogleCalendarStatus('Google Calendar: connecting Martina…');
+function connectMumGoogleCalendarFromTap(loginHint=MUM_GOOGLE_EMAIL){
+  updateGoogleCalendarStatus(loginHint?'Google Calendar: connecting Martina…':'Google Calendar: choose account…');
+  const tokenPromise=requestGoogleCalendarTokenFromGesture(loginHint?'consent':'select_account consent',loginHint||'');
+  return finishMumGoogleCalendarConnection(tokenPromise,loginHint);
+}
+async function finishMumGoogleCalendarConnection(tokenPromise,loginHint=MUM_GOOGLE_EMAIL){
   try{
-    const token=await requestGoogleCalendarToken('consent',loginHint||MUM_GOOGLE_EMAIL);
+    const token=await tokenPromise;
     const result=await fetchGoogleCalendarEvents(token);
     const primaryId=String(result.primaryId||'').toLowerCase();
     if(primaryId!==MUM_GOOGLE_EMAIL.toLowerCase()){
@@ -2270,11 +2321,11 @@ async function connectMumGoogleCalendar(loginHint=MUM_GOOGLE_EMAIL){
 function openMumGoogleAccountChooser(){
   document.getElementById('menuModal').classList.remove('open');
   document.getElementById('googleAccountModal').classList.add('open');
+  if(!googleCalendarAuthReady&&!googleCalendarAuthLoadError) preloadGoogleCalendarAuth();
 }
 function disconnectMumGoogleCalendar(){
   const token=googleAccessToken;
   persistGoogleSessionToken('',0);
-  googleTokenClient=null;
   googleTokenPendingReject=null;
   clearInterval(googleAutoSyncTimer);
   googleAutoSyncTimer=null;
@@ -3042,11 +3093,11 @@ document.getElementById('googleCalendarConnectBtn').onclick=openMumGoogleAccount
 document.getElementById('googleAccountCancelBtn').onclick=()=>document.getElementById('googleAccountModal').classList.remove('open');
 document.getElementById('googleConnectMumDirectBtn').onclick=()=>{
   document.getElementById('googleAccountModal').classList.remove('open');
-  connectMumGoogleCalendar(MUM_GOOGLE_EMAIL);
+  connectMumGoogleCalendarFromTap(MUM_GOOGLE_EMAIL);
 };
 document.getElementById('googleChooseExistingBtn').onclick=()=>{
   document.getElementById('googleAccountModal').classList.remove('open');
-  connectMumGoogleCalendar('');
+  connectMumGoogleCalendarFromTap('');
 };
 document.getElementById('googleCalendarSyncBtn').onclick=()=>syncMumGoogleCalendar({interactive:true}).catch(()=>{});
 document.getElementById('googleCalendarDisconnectBtn').onclick=()=>disconnectMumGoogleCalendar();
@@ -3128,6 +3179,7 @@ function runWhenIdle(fn,timeout=1200){
   if('requestIdleCallback' in window) requestIdleCallback(()=>fn(),{timeout});
   else setTimeout(fn,250);
 }
+preloadGoogleCalendarAuth();
 runWhenIdle(runStartupMaintenance,700);
 setTimeout(()=>{
   runWhenIdle(()=>{
