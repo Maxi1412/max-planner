@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#1d4e46">
+  <meta name="referrer" content="no-referrer">
+  <title>Connect Mum Google Calendar · Max Planner</title>
+  <style>
+    :root{font-family:system-ui,sans-serif;color:#17332d;background:#f6f3ec}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;box-sizing:border-box}.card{width:min(420px,100%);background:#fff;border:1px solid #e2ddd0;border-radius:18px;padding:22px;box-sizing:border-box}h1{font-size:23px;margin:0 0 12px}p{line-height:1.5;color:#52605c}button,a{display:block;box-sizing:border-box;width:100%;padding:14px;margin-top:12px;border:1px solid #1d4e46;border-radius:12px;background:#1d4e46;color:#fff;font:700 16px system-ui;text-align:center;text-decoration:none}button:disabled{opacity:.55}a{background:#fff;color:#1d4e46}#status{white-space:pre-line;font-size:14px;margin-top:16px}.error{color:#9e2835}.ok{color:#176b4a}
+  </style>
+</head>
+<body>
+<main class="card">
+  <h1>Connect Mum Google Calendar</h1>
+  <p id="instructions">Connect Mum’s account, or your own account if Mum has shared her Google Calendar with you. Existing Planner appointments stay in place.</p>
+  <button type="button" id="connectBtn" disabled>Preparing Google sign-in…</button>
+  <a id="backLink" href="./">Back to Max Planner</a>
+  <div id="status" role="status" aria-live="polite"></div>
+</main>
+<script>
+(() => {
+  'use strict';
+  const CLIENT_ID='472362575652-33sufdi0inj2kljqrg81587vq7c15fhc.apps.googleusercontent.com';
+  const SCOPE='https://www.googleapis.com/auth/calendar.readonly';
+  const MUM_EMAIL='martina.orihuela@gmail.com';
+  const HANDOFF_KEY='max-planner-google-calendar-handoff-v1',CHANNEL='max-planner-google-calendar-auth';
+  const base=new URL('./',location.href),choose=new URLSearchParams(location.search).get('mode')==='choose';
+  const button=document.getElementById('connectBtn'),status=document.getElementById('status');
+  document.getElementById('backLink').href=base.href;
+  const show=(text,error=false)=>{status.textContent=text;status.className=error?'error':'ok';};
+  let tokenClient,requestTimer;
+  const ready=()=>{button.disabled=false;button.textContent=choose?'Connect my shared-calendar account':'Continue with Mum’s Google account';};
+  function fail(message){clearTimeout(requestTimer);ready();show(message,true);}
+  async function prepareDocument(){
+    if(!('serviceWorker' in navigator)) return;
+    const registration=await navigator.serviceWorker.register(new URL('./sw.js',base).href,{scope:base.pathname,updateViaCache:'none'});
+    await registration.update();
+    if(registration.waiting) registration.waiting.postMessage({type:'SKIP_WAITING'});
+    if(!navigator.serviceWorker.controller){
+      await new Promise(resolve=>{
+        const done=()=>{clearTimeout(timer);navigator.serviceWorker.removeEventListener('controllerchange',done);resolve();};
+        const timer=setTimeout(done,3500);navigator.serviceWorker.addEventListener('controllerchange',done,{once:true});
+      });
+    }
+    // Reload at most once to apply the document policy; never loop on a failed preparation.
+    const marker='max-planner-auth-document-1.20.0';
+    if(navigator.serviceWorker.controller&&!sessionStorage.getItem(marker)){
+      const probe=new URL('./google-calendar-connect.html',base);probe.searchParams.set('probe',Date.now());
+      const response=await fetch(probe,{cache:'no-store'});
+      if(response.headers.get('X-Max-Planner-Calendar-Auth')==='planner-coop-v2'){
+        sessionStorage.setItem(marker,'1');location.reload();return false;
+      }
+    }
+    return true;
+  }
+  async function initialize(){
+    show('Preparing Google sign-in…');
+    try{
+      if(await prepareDocument()===false) return;
+      await new Promise((resolve,reject)=>{
+        if(window.google?.accounts?.oauth2){resolve();return;}
+        const script=document.createElement('script'),timer=setTimeout(()=>reject(new Error('Google sign-in took too long to load. Check your connection, then reload this page.')),20000);
+        script.src='https://accounts.google.com/gsi/client';script.async=true;
+        script.onload=()=>{clearTimeout(timer);window.google?.accounts?.oauth2?resolve():reject(new Error('Google sign-in could not initialize.'));};
+        script.onerror=()=>{clearTimeout(timer);reject(new Error('Google sign-in could not load. Check your connection, then reload this page.'));};
+        document.head.appendChild(script);
+      });
+      tokenClient=google.accounts.oauth2.initTokenClient({
+        client_id:CLIENT_ID,scope:SCOPE,
+        callback:response=>{
+          clearTimeout(requestTimer);
+          if(response?.error){fail(response.error_description||response.error);return;}
+          if(!response?.access_token||!google.accounts.oauth2.hasGrantedAllScopes(response,SCOPE)){fail('Calendar read permission was not granted. Please try again.');return;}
+          const payload={token:response.access_token,expiry:Date.now()+Math.max(0,Number(response.expires_in||3600)-60)*1000,createdAt:new Date().toISOString()};
+          try{localStorage.setItem(HANDOFF_KEY,JSON.stringify(payload));if(localStorage.getItem(HANDOFF_KEY)!==JSON.stringify(payload)) throw new Error();}
+          catch(_){fail('This browser could not pass authorization back to Planner. Allow site storage for this site and try again. Your planner entries have not been changed.');return;}
+          try{const channel=new BroadcastChannel(CHANNEL);channel.postMessage({type:'token-ready'});channel.close();}catch(_){}
+          show('Google Calendar authorized. Returning to your planner…');button.disabled=true;
+          location.replace(base.href+'?gcal_auth_return=1');
+        },
+        error_callback:error=>fail(error?.type==='popup_closed'?'Google sign-in was closed. Tap the button to try again.':error?.type==='popup_failed_to_open'?'Google sign-in was blocked. Allow the sign-in window, then tap the button again.':'Google sign-in could not start. Please try again.')
+      });
+      ready();show('Google sign-in is ready.');
+      button.onclick=()=>{
+        button.disabled=true;show('Opening Google account selection…');
+        requestTimer=setTimeout(()=>fail('Google sign-in did not finish. Tap the button to try again.'),90000);
+        const request={prompt:'select_account'};
+        if(!choose) request.login_hint=MUM_EMAIL;
+        try{tokenClient.requestAccessToken(request);}catch(error){fail(error.message||'Google sign-in could not start.');}
+      };
+    }catch(error){show(error.message||'Google sign-in is unavailable. Reload this page to retry.',true);button.textContent='Reload sign-in';button.disabled=false;button.onclick=()=>location.reload();}
+  }
+  initialize();
+})();
+</script>
+</body>
+</html>

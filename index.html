@@ -506,9 +506,9 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
   <h3>Connect Mum Google Calendar</h3>
   <div class="actionList">
     <button type="button" class="save" id="googleConnectMumDirectBtn">Connect Martina · martina.orihuela@gmail.com</button>
-    <button type="button" id="googleChooseExistingBtn">Choose a different Google account</button>
+    <button type="button" id="googleChooseExistingBtn">Use my Google account (Mum has shared her calendar)</button>
   </div>
-  <div class="colorHint">Max Planner requests read-only Calendar access. Google handles the authorization securely.</div>
+  <div class="colorHint">Connect Mum’s account, or your own Google account if Mum has shared her calendar with you. Your existing planner entries stay in place. Calendar access is read-only.</div>
   <div class="row">
     <button type="button" class="cancel" id="googleAccountCancelBtn">Cancel</button>
   </div>
@@ -616,7 +616,11 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
   <div id="printSheet"></div>
 </div>
 
-<script>
+<script src="./planner-core.js"></script>
+<script src="./planner-safety.js"></script>
+<script type="module">
+try{await PlannerSafety.prepare('PWA 1.20.0');}
+catch(error){PlannerSafety.showFailure(error.message,{blocking:true});throw error;}
 const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
 const META_KEY='max-planner-meta-v3';
@@ -636,8 +640,8 @@ const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-1
 const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
 const SAFETY_BACKUP_KEY_V39='max-planner-safety-pre-roster-oct26-nov1-2026';
-const VERSION=43;
-const APP_BUILD='PWA 1.19.2';
+const VERSION=44;
+const APP_BUILD='PWA 1.20.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -649,143 +653,17 @@ const DEFAULTS=[
 ];
 
 let data={};
-try{ data=JSON.parse(localStorage.getItem(DATA_KEY)||'{}'); }catch(e){ data={}; }
+try{ data=JSON.parse(localStorage.getItem(DATA_KEY)||'{}'); if(!data||typeof data!=='object'||Array.isArray(data)) throw new Error('Invalid planner data'); }catch(e){PlannerSafety.showFailure('Stored planner data needs recovery. Download a backup below; your stored information has not been replaced.',{blocking:true});throw e;}
 let recurring=[];
-try{ recurring=JSON.parse(localStorage.getItem(RECUR_KEY)||'[]'); }catch(e){ recurring=[]; }
+const hadStoredRecurring=localStorage.getItem(RECUR_KEY)!==null;
+try{ recurring=JSON.parse(localStorage.getItem(RECUR_KEY)||'[]'); if(!Array.isArray(recurring)) throw new Error('Invalid recurring data'); }catch(e){PlannerSafety.showFailure('Stored recurring items need recovery. Download a backup below; nothing has been reset.',{blocking:true});throw e;}
 let meta={disabledDefaults:[]};
-try{ const m=JSON.parse(localStorage.getItem(META_KEY)||'{}'); meta={...meta,...m}; }catch(e){}
+try{ const m=JSON.parse(localStorage.getItem(META_KEY)||'{}'); if(!m||typeof m!=='object'||Array.isArray(m)) throw new Error('Invalid planner settings'); meta={...meta,...m}; }catch(e){PlannerSafety.showFailure('Stored planner settings need recovery. Download a backup below; nothing has been reset.',{blocking:true});throw e;}
 
-// Preserve the exact phone-stored planner state before migrations or new UI fields touch it.
-try{
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY)){
-    localStorage.setItem(SAFETY_BACKUP_KEY,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-category-system safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V18)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V18,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-flexible-category/time-picker safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V19)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V19,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-editable-work-blocks safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V20)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V20,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-roster Oct 12-25 safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V21)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V21,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-appointment-notes safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V22)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V22,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-expense-link safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V24)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V24,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-expense-total-display safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V25)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V25,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-income-link safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V26)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V26,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-note-display-performance safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V27)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V27,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-to-do-backward-move safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V28)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V28,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-Google-Calendar-sync safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V30)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V30,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-Google-Drive-autobackup safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V32)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V32,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-separate-Google-Drive-client safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V35)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V35,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-manual-Mum-Google-login safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V36)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V36,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-Samsung-ICS-import safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V39)){
-    localStorage.setItem(SAFETY_BACKUP_KEY_V39,JSON.stringify({
-      app:'Max Planner',
-      snapshot:'Pre-roster-Oct26-Nov1-2026 safety backup',
-      createdAt:new Date().toISOString(),
-      data,recurring,meta
-    }));
-  }
-}catch(e){}
+// A verified raw snapshot was created before reading or migrating any planner data.
+try{PlannerCore.validateBackup({data,recurring,meta});}
+catch(error){PlannerSafety.showFailure('Stored planner information needs recovery. Download a backup below; the existing records have not been replaced.',{blocking:true});throw error;}
+PlannerSafety.setPayloadProvider(()=>buildDriveBackupPayload());
 if(!Array.isArray(meta.disabledDefaults)) meta.disabledDefaults=[];
 
 function uid(prefix='i'){ return prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); }
@@ -919,7 +797,7 @@ function repeatLabel(r){
   return 'Does not repeat';
 }
 const GOOGLE_CALENDAR_CLIENT_ID='472362575652-33sufdi0inj2kljqrg81587vq7c15fhc.apps.googleusercontent.com';
-const GOOGLE_CALENDAR_BRIDGE_URL='https://maxi1412.github.io/formfill-lite/google-calendar-connect.html';
+const GOOGLE_CALENDAR_BRIDGE_URL=new URL('./google-calendar-connect.html',location.href).href;
 const GOOGLE_CALENDAR_HANDOFF_KEY='max-planner-google-calendar-handoff-v1';
 const GOOGLE_CALENDAR_AUTH_CHANNEL='max-planner-google-calendar-auth';
 const MUM_GOOGLE_EMAIL='martina.orihuela@gmail.com';
@@ -935,6 +813,7 @@ let googleAccessTokenExpiry=0;
 let googleSyncInProgress=false;
 let googleAutoSyncTimer=null;
 let driveTokenClient=null;
+let driveTokenRequest=null;
 let driveAccessToken='';
 let driveAccessTokenExpiry=0;
 let driveBackupTimer=null;
@@ -942,15 +821,12 @@ let driveBackupInProgress=false;
 let driveBackupQueued=false;
 
 function persistPlannerLocal(){
-  try{
-    localStorage.setItem(DATA_KEY,JSON.stringify(data));
-    localStorage.setItem(RECUR_KEY,JSON.stringify(recurring));
-    localStorage.setItem(META_KEY,JSON.stringify(meta));
-  }catch(e){}
+  return PlannerSafety.commit({app:'Max Planner',version:VERSION,data,recurring,meta});
 }
 function save(){
-  persistPlannerLocal();
-  if(meta.driveBackup?.enabled) scheduleDriveBackup();
+  const saved=persistPlannerLocal();
+  if(saved&&meta.driveBackup?.enabled) scheduleDriveBackup();
+  return saved;
 }
 function dayData(key){ if(!data[key]) data[key]={appts:[],todos:[],noteItems:[]}; migrateDay(data[key]); return data[key]; }
 
@@ -1118,8 +994,7 @@ if(!meta.workScheduleV4Applied){
   const workDates=new Set(['2026-09-26','2026-09-27','2026-09-28','2026-09-30','2026-10-02','2026-10-03','2026-10-04']);
   rosterDates.forEach(key=>{
     const dd=dayData(key);
-    dd.appts=dd.appts.filter(a=>a.who!=='work');
-    if(workDates.has(key)) dd.appts.push({id:uid('a'),start:'19:00',end:'23:00',title:'Work',who:'work',category:'general',status:'pending'});
+    if(workDates.has(key)&&!dd.appts.some(a=>isWorkShiftAppointment(a)&&normalizeTime(a.start)==='19:00'&&normalizeTime(a.end)==='23:00')) dd.appts.push({id:uid('a'),start:'19:00',end:'23:00',title:'Work',who:'work',category:'general',status:'pending'});
   });
   meta.workScheduleV4Applied=true;
 }
@@ -1165,23 +1040,12 @@ if(!meta.workRosterThroughOct18Applied){
   rosterDates.forEach(key=>{
     const dd=dayData(key);
 
-    // Replace only the standard evening work roster blocks; preserve unrelated appointments.
-    dd.appts=dd.appts.filter(a=>{
-      const title=String(a.title||'').trim().toLowerCase();
-      const rosterWorkTitle=['work','working','start work','prep for work','get ready for work','leave for work','go to work','drive to work'].includes(title);
-      return !(a.autoWorkSupport || a.isGeneratedWorkSupport || (a.who==='work' && (rosterWorkTitle || minutes(a.start)>=18*60)));
-    });
-
-    // Clean old/off labels from earlier seed data.
-    dd.noteItems=dd.noteItems.filter(n=>!/^(alex|max)\s+off$/i.test(String(n.text||'').trim()));
-    if(typeof dd.notes==='string' && /^(alex|max)\s+off$/i.test(dd.notes.trim())) dd.notes='';
-
-    if(workDates.has(key)){
+    if(workDates.has(key)&&!dd.appts.some(a=>isWorkShiftAppointment(a)&&normalizeTime(a.start)==='19:00'&&normalizeTime(a.end)==='23:00')){
       dd.appts.push({
         id:uid('a'),start:'19:00',end:'23:00',
         title:'Work',who:'work',category:'general',status:'pending'
       });
-    }else{
+    }else if(!workDates.has(key)&&!dd.noteItems.some(n=>String(n.text||'').trim()==='Max OFF')){
       dd.noteItems.push({id:uid('n'),text:'Max OFF'});
     }
   });
@@ -1281,11 +1145,7 @@ if(!meta.inmoInterviewOct6Applied){
 
 // Stop dog-walk scheduling from 1 Oct 2026 onward.
 if(!meta.stopDogWalkFromOct1Applied){
-  Object.keys(data).forEach(key=>{
-    if(key<'2026-10-01') return;
-    const dd=dayData(key);
-    dd.appts=dd.appts.filter(a=>!/\b(walk(?:\s+the)?\s+dog|dog\s+needs\s+walk)\b/i.test(String(a.title||'')));
-  });
+  // The default has an end date. Preserve individually entered dog-walk appointments.
   meta.stopDogWalkFromOct1Applied=true;
 }
 
@@ -1310,9 +1170,11 @@ if(!meta.categorySystemV17Applied){
 }
 
 // Migrate the old hard-coded plaster reminder to an editable recurring reminder.
-if(!recurring.some(r=>r.id==='pflaster-series')){
+if(!meta.plasterReminderMigrationApplied&&!hadStoredRecurring&&!recurring.some(r=>r.id==='pflaster-series')){
   recurring.push({id:'pflaster-series',type:'reminder',title:'Mama Pflaster due (patch, every 3 days)',who:'mum',flag:true,startDate:'2026-09-25',repeat:'interval',interval:3,start:'',end:''});
 }
+
+meta.plasterReminderMigrationApplied=true;
 
 // Startup maintenance is intentionally deferred until after first paint.
 // The day renderer can still generate work-support blocks immediately when needed.
@@ -1467,7 +1329,10 @@ function renderDay(){
   renderTodos(key); renderNotes(key);
   const slots=document.getElementById('slots');slots.innerHTML='';
   const appts=mergedAppts(key);
-  VISUAL_HOURS.forEach(h=>{
+  const firstHour=Math.min(8,...appts.map(a=>Math.max(0,Math.floor(minutes(a.start)/60))).filter(h=>h<24));
+  const lastHour=Math.max(21,...appts.map(a=>Math.min(23,Math.max(Math.floor(minutes(a.start)/60),Math.ceil(minutes(a.end||a.start)/60)-1))).filter(h=>h>=0&&h<24));
+  const hours=Array.from({length:lastHour-firstHour+1},(_,i)=>firstHour+i);
+  hours.forEach(h=>{
     const row=document.createElement('div');row.className='slot';
     const t=document.createElement('div');t.className='time';t.innerHTML='<span>'+pad(h)+':00</span><span class="hourPlus">＋</span>';
     t.title='Add appointment at '+pad(h)+':00';
@@ -1494,12 +1359,12 @@ function renderDay(){
     }
     row.append(t,b);slots.appendChild(row);
   });
-  renderSpanningAppointments(appts,key,slots);
+  renderSpanningAppointments(appts,key,slots,hours);
 }
 
-function renderSpanningAppointments(appts,key,slots){
-  const visualStart=VISUAL_HOURS[0]*60;
-  const visualEnd=(VISUAL_HOURS[VISUAL_HOURS.length-1]+1)*60;
+function renderSpanningAppointments(appts,key,slots,hours=VISUAL_HOURS){
+  const visualStart=hours[0]*60;
+  const visualEnd=(hours[hours.length-1]+1)*60;
   const pxPerHour=84;
   const spans=appts.filter(isSpanningAppointment)
     .filter(a=>minutes(a.start)<visualEnd && minutes(a.end)>visualStart)
@@ -1532,7 +1397,7 @@ function renderSpanningAppointments(appts,key,slots){
 
   const layer=document.createElement('div');
   layer.id='spanLayer';
-  layer.style.height=(VISUAL_HOURS.length*pxPerHour)+'px';
+  layer.style.height=(hours.length*pxPerHour)+'px';
   spans.forEach(a=>{
     const clippedStart=Math.max(minutes(a.start),visualStart);
     const clippedEnd=Math.min(minutes(a.end),visualEnd);
@@ -1656,28 +1521,32 @@ async function ensureDriveTokenClient(){
   await loadGoogleIdentityScript();
   if(driveTokenClient) return driveTokenClient;
   driveTokenClient=google.accounts.oauth2.initTokenClient({
-    client_id:GOOGLE_DRIVE_CLIENT_ID,
-    scope:GOOGLE_DRIVE_SCOPE,
-    callback:()=>{}
+    client_id:GOOGLE_DRIVE_CLIENT_ID,scope:GOOGLE_DRIVE_SCOPE,
+    callback:response=>{
+      if(!driveTokenRequest) return;
+      const pending=driveTokenRequest;driveTokenRequest=null;clearTimeout(pending.timer);
+      if(response?.error){pending.reject(new Error(response.error_description||response.error));return;}
+      if(!response?.access_token||!google.accounts.oauth2.hasGrantedAllScopes(response,GOOGLE_DRIVE_SCOPE)){
+        pending.reject(new Error('Google Drive backup permission was not granted.'));return;
+      }
+      persistDriveSessionToken(response.access_token,response.expires_in);pending.resolve(response.access_token);
+    },
+    error_callback:error=>{
+      if(!driveTokenRequest) return;
+      const pending=driveTokenRequest;driveTokenRequest=null;clearTimeout(pending.timer);
+      pending.reject(new Error(error?.type==='popup_closed'?'Google Drive sign-in was closed. Please try again.':error?.type==='popup_failed_to_open'?'Google Drive sign-in was blocked. Allow the sign-in window and try again.':'Google Drive sign-in could not start.'));
+    }
   });
   return driveTokenClient;
 }
 function requestDriveAccessToken(promptMode=''){
-  return new Promise(async(resolve,reject)=>{
-    try{
-      const tc=await ensureDriveTokenClient();
-      tc.callback=(resp)=>{
-        if(resp?.error){reject(new Error(resp.error_description||resp.error));return;}
-        if(!resp?.access_token){reject(new Error('Google did not return a Drive access token.'));return;}
-        if(!google.accounts.oauth2.hasGrantedAllScopes(resp,GOOGLE_DRIVE_SCOPE)){
-          reject(new Error('Google Drive backup permission was not granted.'));
-          return;
-        }
-        persistDriveSessionToken(resp.access_token,resp.expires_in);
-        resolve(resp.access_token);
-      };
-      tc.requestAccessToken({prompt:promptMode});
-    }catch(e){reject(e);}
+  return new Promise((resolve,reject)=>{
+    if(!driveTokenClient){reject(new Error('Google sign-in is still loading. Reopen the menu and try again.'));return;}
+    if(driveTokenRequest){reject(new Error('A Google Drive sign-in is already in progress.'));return;}
+    const timer=setTimeout(()=>{driveTokenRequest=null;reject(new Error('Google Drive sign-in did not finish. Please try again.'));},90000);
+    driveTokenRequest={resolve,reject,timer};
+    try{driveTokenClient.requestAccessToken({prompt:promptMode});}
+    catch(error){clearTimeout(timer);driveTokenRequest=null;reject(error);}
   });
 }
 function buildDriveBackupPayload(){
@@ -1691,11 +1560,17 @@ function buildDriveBackupPayload(){
     meta
   };
 }
+async function fetchPlannerApi(url,options={}){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),25000);
+  try{return await fetch(url,{...options,cache:'no-store',signal:controller.signal});}
+  catch(error){if(error.name==='AbortError') throw new Error('Google did not respond in time. Check your connection and try again.');throw error;}
+  finally{clearTimeout(timer);}
+}
 async function driveApiJson(url,options={}){
   const token=(driveAccessToken&&driveAccessTokenExpiry>Date.now())?driveAccessToken:(restoreDriveSessionToken()?driveAccessToken:'');
   if(!token) throw Object.assign(new Error('Google Drive authorization has expired. Tap Enable Google Drive backup once to reconnect.'),{code:'AUTH'});
   const headers={...(options.headers||{}),Authorization:'Bearer '+token};
-  const res=await fetch(url,{...options,headers});
+  const res=await fetchPlannerApi(url,{...options,headers});
   if(res.status===401){
     persistDriveSessionToken('',0);
     throw Object.assign(new Error('Google Drive authorization has expired. Tap Enable Google Drive backup once to reconnect.'),{code:'AUTH'});
@@ -1706,29 +1581,43 @@ async function driveApiJson(url,options={}){
     if(res.status===403 && /disabled|has not been used|not enabled/i.test(detail)){
       throw Object.assign(new Error('Google Drive API is not enabled for the Max Planner Google project.'),{code:'API_DISABLED'});
     }
-    throw new Error(detail||('Google Drive request failed ('+res.status+').'));
+    throw Object.assign(new Error(detail||('Google Drive request failed ('+res.status+').')),{status:res.status});
   }
   if(res.status===204) return null;
   const txt=await res.text();
   return txt?JSON.parse(txt):null;
 }
+async function listDriveBackupFiles(){
+  const files=[];
+  let pageToken='';
+  do{
+    const params=new URLSearchParams({spaces:'appDataFolder',pageSize:'100',fields:'nextPageToken,files(id,name,modifiedTime,appProperties)',q:"trashed=false and (name='max-planner-backup.json' or name contains 'max-planner-backup-')"});
+    if(pageToken) params.set('pageToken',pageToken);
+    const result=await driveApiJson('https://www.googleapis.com/drive/v3/files?'+params.toString());
+    files.push(...(result?.files||[]));pageToken=result?.nextPageToken||'';
+  }while(pageToken);
+  return files.sort((a,b)=>String(b.modifiedTime||'').localeCompare(String(a.modifiedTime||'')));
+}
 async function findDriveBackupFileId(){
-  const known=String(meta.driveBackup?.fileId||'');
-  if(known) return known;
-  const q=encodeURIComponent("name='"+GOOGLE_DRIVE_BACKUP_FILENAME.replace(/'/g,"\\'")+"' and trashed=false");
-  const url='https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=10&fields=files(id,name,modifiedTime)&q='+q;
-  const json=await driveApiJson(url);
-  const file=(json?.files||[]).sort((a,b)=>String(b.modifiedTime||'').localeCompare(String(a.modifiedTime||'')))[0];
-  return file?.id||'';
+  const deviceId=PlannerSafety.deviceId(),cfg=meta.driveBackup||{};
+  if(cfg.fileId&&cfg.deviceId===deviceId){
+    try{
+      const file=await driveApiJson('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(cfg.fileId)+'?fields=id,appProperties');
+      if(file?.appProperties?.plannerDeviceId===deviceId) return String(file.id);
+    }catch(error){if(error.status!==404) throw error;}
+  }
+  // Reuse only an explicitly device-owned destination. Legacy/other-device backups are untouched.
+  const files=await listDriveBackupFiles();
+  return String(files.find(file=>file.appProperties?.plannerDeviceId===deviceId)?.id||'');
 }
 async function createDriveBackupFile(){
-  const json=await driveApiJson('https://www.googleapis.com/drive/v3/files?fields=id,name',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({name:GOOGLE_DRIVE_BACKUP_FILENAME,parents:['appDataFolder'],mimeType:'application/json'})
+  const deviceId=PlannerSafety.deviceId();
+  const result=await driveApiJson('https://www.googleapis.com/drive/v3/files?fields=id,name',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:'max-planner-backup-'+deviceId+'.json',parents:['appDataFolder'],mimeType:'application/json',appProperties:{plannerDeviceId:deviceId}})
   });
-  if(!json?.id) throw new Error('Google Drive did not create the backup file.');
-  return String(json.id);
+  if(!result?.id) throw new Error('Google Drive did not create the backup file.');
+  return String(result.id);
 }
 async function uploadDriveBackup(){
   if(driveBackupInProgress){driveBackupQueued=true;return false;}
@@ -1748,6 +1637,7 @@ async function uploadDriveBackup(){
       ...(meta.driveBackup||{}),
       enabled:true,
       fileId,
+      deviceId:PlannerSafety.deviceId(),
       lastBackupAt:payload.savedAt,
       lastError:''
     };
@@ -1761,7 +1651,7 @@ async function uploadDriveBackup(){
     throw e;
   }finally{
     driveBackupInProgress=false;
-    if(driveBackupQueued){
+    if(driveBackupQueued&&meta.driveBackup?.enabled){
       driveBackupQueued=false;
       setTimeout(()=>uploadDriveBackup().catch(()=>{}),500);
     }
@@ -1772,6 +1662,7 @@ function scheduleDriveBackup(delay=1400){
   clearTimeout(driveBackupTimer);
   driveBackupTimer=setTimeout(()=>{
     if((driveAccessToken&&driveAccessTokenExpiry>Date.now())||restoreDriveSessionToken()){
+      if(meta.driveBackup?.deviceId!==PlannerSafety.deviceId()){updateDriveBackupStatus('Google Drive backup paused · reconnect to create a separate backup for this device.','paused');return;}
       uploadDriveBackup().catch(()=>{});
     }else{
       updateDriveBackupStatus('✓ Google Drive backup configured\nAutomatic backup: PAUSED · reconnect required\nLast successful backup: '+(meta.driveBackup?.lastBackupAt?new Date(meta.driveBackup.lastBackupAt).toLocaleString():'Not yet'),'paused');
@@ -1782,7 +1673,7 @@ async function enableDriveBackup(){
   updateDriveBackupStatus('Google Drive: waiting for authorization…','paused');
   try{
     await requestDriveAccessToken('consent');
-    // Safety rule: the first Drive action is always UPLOAD of current local planner data.
+    // Upload to this device's separate file; previous devices' and legacy backups remain available.
     meta.driveBackup={...(meta.driveBackup||{}),enabled:true};
     persistPlannerLocal();
     await uploadDriveBackup();
@@ -1808,6 +1699,7 @@ async function manualDriveBackup(){
 }
 function disconnectDriveBackup(){
   const token=driveAccessToken;
+  clearTimeout(driveBackupTimer);driveBackupQueued=false;
   persistDriveSessionToken('',0);
   driveTokenClient=null;
   if(token&&window.google?.accounts?.oauth2?.revoke){
@@ -1819,45 +1711,32 @@ function disconnectDriveBackup(){
 }
 async function restorePlannerFromDrive(){
   try{
-    if(!((driveAccessToken&&driveAccessTokenExpiry>Date.now())||restoreDriveSessionToken())){
-      await requestDriveAccessToken('');
-    }
-    const fileId=await findDriveBackupFileId();
-    if(!fileId){alert('No Max Planner backup was found in this Google Drive account.');return;}
-    const remote=await driveApiJson('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(fileId)+'?alt=media');
-    if(!remote||remote.app!=='Max Planner'||typeof remote.data!=='object'){
-      throw new Error('The Google Drive backup is not a valid Max Planner backup.');
-    }
-    const savedAt=remote.savedAt?new Date(remote.savedAt).toLocaleString():'unknown time';
-    if(!confirm('Restore the Max Planner backup saved '+savedAt+'?\n\nThis will replace the planner data currently stored on this device.')) return;
-
-    try{
-      localStorage.setItem('max-planner-safety-before-drive-restore-latest',JSON.stringify({
-        app:'Max Planner',
-        snapshot:'Before Google Drive restore',
-        createdAt:new Date().toISOString(),
-        data,recurring,meta
-      }));
-    }catch(e){}
-
-    data=remote.data;
-    recurring=Array.isArray(remote.recurring)?remote.recurring:[];
-    meta=remote.meta&&typeof remote.meta==='object'?remote.meta:{disabledDefaults:[]};
-    if(!Array.isArray(meta.disabledDefaults)) meta.disabledDefaults=[];
-    meta.driveBackup={...(meta.driveBackup||{}),enabled:true,fileId};
-    Object.keys(data).forEach(k=>migrateDay(data[k]));
-    migrateRecurringItems();
-    syncAllWorkSupportBlocks();
-    persistPlannerLocal();
-    render();
-    updateDriveBackupStatus('✓ Google Drive connected\nPlanner restored from backup saved '+savedAt+'\nAutomatic backup: ON · after every planner change','connected');
-    alert('Planner restored from Google Drive.');
-  }catch(e){
-    alert(e?.message||'Could not restore the Google Drive backup.');
-  }
+    if(!((driveAccessToken&&driveAccessTokenExpiry>Date.now())||restoreDriveSessionToken())) await requestDriveAccessToken('');
+    const files=await listDriveBackupFiles();
+    if(!files.length){alert('No Max Planner backup was found in this Google Drive account.');return;}
+    const restore=async file=>{
+      try{
+        const remote=await driveApiJson('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(file.id)+'?alt=media');
+        if(remote?.app!=='Max Planner') throw new Error('This is not a Max Planner backup.');
+        const next=PlannerCore.validateBackup(remote);
+        const savedAt=remote.savedAt?new Date(remote.savedAt).toLocaleString():'unknown time';
+        if(!confirm('Restore the planner backup saved '+savedAt+'? Your current planner will first be kept in a safety snapshot.')) return;
+        await PlannerSafety.snapshot('before-drive-restore');
+        const currentBackupConfig=meta.driveBackup;
+        data=next.data;recurring=next.recurring;meta=next.meta;
+        if(!Array.isArray(meta.disabledDefaults)) meta.disabledDefaults=[];
+        meta.driveBackup={...(currentBackupConfig||{}),enabled:false};
+        Object.keys(data).forEach(key=>migrateDay(data[key]));migrateRecurringItems();syncAllWorkSupportBlocks();
+        if(!persistPlannerLocal()) throw new Error('The restored planner is on this screen, but saving on this device failed. Download a backup before closing.');
+        render();updateDriveBackupStatus();alert('Planner restored. Your previous local planner and existing Drive backups have been kept.');
+      }catch(error){alert(error.message||'Could not restore the Google Drive backup.');}
+    };
+    showActions('Choose a planner backup',files.map(file=>({label:(file.modifiedTime?new Date(file.modifiedTime).toLocaleString():'Undated backup')+' · '+(file.appProperties?.plannerDeviceId===PlannerSafety.deviceId()?'This device':'Previous / other device'),fn:()=>restore(file)})));
+  }catch(error){alert(error.message||'Could not read Google Drive backups.');}
 }
 function resumeDriveBackupIfAuthorized(){
   if(!meta.driveBackup?.enabled) return;
+  if(meta.driveBackup?.deviceId!==PlannerSafety.deviceId()){updateDriveBackupStatus('Google Drive backup paused · reconnect to create a separate backup for this device. Existing backups are kept.','paused');return;}
   if(restoreDriveSessionToken()){
     scheduleDriveBackup(800);
   }else{
@@ -1868,11 +1747,12 @@ function resumeDriveBackupIfAuthorized(){
 function googleStatusText(){
   const cfg=meta.googleCalendar||{};
   if(!cfg.connected) return 'Google Calendar: not connected';
+  if(!((googleAccessToken&&googleAccessTokenExpiry>Date.now())||restoreGoogleSessionToken())) return 'Mum’s imported events are saved · reconnect Google Calendar to resume syncing';
   if(cfg.lastSync){
     const d=new Date(cfg.lastSync);
     const n=Array.isArray(cfg.calendars)?cfg.calendars.length:0;
     const email=cfg.connectedEmail?(' · '+cfg.connectedEmail):'';
-    return '✓ Mum Google Calendar connected'+email+' · '+n+' calendar'+(n===1?'':'s')+' · Last sync '+d.toLocaleString();
+    return '✓ Mum Google Calendar connected'+email+' · '+n+' calendar'+(n===1?'':'s')+' · Last sync '+d.toLocaleString()+(cfg.skippedCalendars?.length?' · '+cfg.skippedCalendars.length+' calendar(s) unavailable; existing appointments kept':'');
   }
   return 'Mum Google Calendar connected';
 }
@@ -1897,40 +1777,28 @@ function restoreGoogleSessionToken(){
     googleAccessToken=p.token;googleAccessTokenExpiry=Number(p.expiry);return true;
   }catch(e){return false;}
 }
+let googleIdentityLoadPromise=null;
 function loadGoogleIdentityScript(){
   if(window.google?.accounts?.oauth2) return Promise.resolve();
-  return new Promise((resolve,reject)=>{
-    const existing=document.querySelector('script[data-max-planner-google-gis]');
-    if(existing){
-      existing.addEventListener('load',()=>resolve(),{once:true});
-      existing.addEventListener('error',()=>reject(new Error('Google sign-in could not load.')),{once:true});
-      return;
-    }
-    const s=document.createElement('script');
-    s.src='https://accounts.google.com/gsi/client';
-    s.async=true;s.defer=true;s.dataset.maxPlannerGoogleGis='1';
-    s.onload=()=>resolve();
-    s.onerror=()=>reject(new Error('Google sign-in could not load.'));
-    document.head.appendChild(s);
+  if(googleIdentityLoadPromise) return googleIdentityLoadPromise;
+  googleIdentityLoadPromise=new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    const timer=setTimeout(()=>fail(),20000);
+    const fail=()=>{clearTimeout(timer);script.remove();googleIdentityLoadPromise=null;reject(new Error('Google sign-in could not load. Check your connection and try again.'));};
+    script.src='https://accounts.google.com/gsi/client';script.async=true;script.defer=true;
+    script.onload=()=>{clearTimeout(timer);if(window.google?.accounts?.oauth2) resolve();else fail();};
+    script.onerror=fail;document.head.appendChild(script);
   });
+  return googleIdentityLoadPromise;
 }
 function openGoogleCalendarBrowserBridge({chooseAccount=false}={}){
-  const mode=chooseAccount?'choose':'mum';
-  const httpsUrl=GOOGLE_CALENDAR_BRIDGE_URL+'?mode='+encodeURIComponent(mode)+'&ts='+Date.now();
-  updateGoogleCalendarStatus('Opening Google Calendar sign-in in Chrome…');
+  const url=new URL(GOOGLE_CALENDAR_BRIDGE_URL);
+  url.searchParams.set('mode',chooseAccount?'choose':'mum');
+  updateGoogleCalendarStatus('Opening Google Calendar sign-in…');
   document.getElementById('googleAccountModal')?.classList.remove('open');
-
-  // On Android force the helper into Chrome rather than the installed PWA window.
-  if(/Android/i.test(navigator.userAgent)){
-    const u=new URL(httpsUrl);
-    const intentTarget=u.host+u.pathname+u.search;
-    const intent='intent://'+intentTarget+
-      '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='+
-      encodeURIComponent(httpsUrl)+';end';
-    window.location.href=intent;
-    return;
-  }
-  window.open(httpsUrl,'_blank','noopener');
+  // Open directly during the tap. Browser-specific Android intents are not required.
+  const popup=window.open(url.href,'max-planner-calendar-auth');
+  if(!popup) window.location.assign(url.href);
 }
 let googleCalendarHandoffInProgress=false;
 async function consumeGoogleCalendarHandoff(){
@@ -1941,7 +1809,6 @@ async function consumeGoogleCalendarHandoff(){
 
   googleCalendarHandoffInProgress=true;
   try{
-    try{localStorage.removeItem(GOOGLE_CALENDAR_HANDOFF_KEY);}catch(e){}
     const payload=JSON.parse(raw);
     const token=String(payload?.token||'');
     const expiry=Number(payload?.expiry||0);
@@ -1949,13 +1816,11 @@ async function consumeGoogleCalendarHandoff(){
     if(!token||expiry<=Date.now()){
       throw new Error('Google Calendar authorization expired before Max Planner received it.');
     }
-    if(email&&email!==MUM_GOOGLE_EMAIL.toLowerCase()){
-      throw new Error('Google authorized a different account. Martina Scheurer must be selected.');
-    }
     const expiresIn=Math.max(60,Math.floor((expiry-Date.now())/1000));
     persistGoogleSessionToken(token,expiresIn);
-    await finishMumGoogleCalendarConnection(Promise.resolve(token),MUM_GOOGLE_EMAIL);
-    return true;
+    const connected=await finishMumGoogleCalendarConnection(Promise.resolve(token),MUM_GOOGLE_EMAIL);
+    if(connected){try{localStorage.removeItem(GOOGLE_CALENDAR_HANDOFF_KEY);}catch(e){}}
+    return connected;
   }catch(e){
     meta.googleCalendar={...(meta.googleCalendar||{}),connected:false,lastError:String(e?.message||e),lastErrorAt:new Date().toISOString()};
     persistPlannerLocal();
@@ -2049,8 +1914,8 @@ async function fetchGoogleCalendarList(accessToken){
       fields:'nextPageToken,items(id,summary,primary,selected,accessRole,hidden,deleted)'
     });
     if(pageToken) params.set('pageToken',pageToken);
-    const res=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList?'+params.toString(),{
-      headers:{Authorization:'Bearer '+accessToken}
+    const res=await fetchPlannerApi('https://www.googleapis.com/calendar/v3/users/me/calendarList?'+params.toString(),{
+      cache:'no-store',headers:{Authorization:'Bearer '+accessToken}
     });
     if(res.status===401) throw Object.assign(new Error('Google Calendar authorization expired.'),{code:401});
     if(!res.ok){
@@ -2072,9 +1937,9 @@ async function fetchGoogleCalendarEvents(accessToken){
   const now=new Date();
   const min=new Date(now);min.setDate(min.getDate()-120);min.setHours(0,0,0,0);
   const max=new Date(now);max.setDate(max.getDate()+365);max.setHours(23,59,59,999);
-  const calendars=await fetchGoogleCalendarList(accessToken);
-  const primary=calendars.find(cal=>cal.primary);
-  if(!primary) throw new Error('Martina’s primary Google Calendar could not be found for the authorized account.');
+  const available=await fetchGoogleCalendarList(accessToken);
+  const selection=PlannerCore.selectMumCalendars(available,MUM_GOOGLE_EMAIL);
+  const calendars=selection.calendars;
 
   const items=[];
   const syncedCalendars=[];
@@ -2083,6 +1948,7 @@ async function fetchGoogleCalendarEvents(accessToken){
   for(const cal of calendars){
     let pageToken='';
     let calendarOk=true;
+    const calendarItems=[];
     do{
       const params=new URLSearchParams({
         timeMin:min.toISOString(),
@@ -2094,13 +1960,13 @@ async function fetchGoogleCalendarEvents(accessToken){
         fields:'nextPageToken,items(id,status,summary,description,location,start,end,updated,htmlLink)'
       });
       if(pageToken) params.set('pageToken',pageToken);
-      const res=await fetch('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cal.id)+'/events?'+params.toString(),{
-        headers:{Authorization:'Bearer '+accessToken}
+      const res=await fetchPlannerApi('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cal.id)+'/events?'+params.toString(),{
+        cache:'no-store',headers:{Authorization:'Bearer '+accessToken}
       });
       if(res.status===401) throw Object.assign(new Error('Google Calendar authorization expired.'),{code:401});
       if(!res.ok){
         let detail='';try{detail=(await res.json())?.error?.message||'';}catch(e){}
-        if(cal.primary){
+        if(String(cal.id).toLowerCase()===selection.targetId.toLowerCase()){
           throw new Error(detail||('Martina’s primary Google Calendar could not be read ('+res.status+').'));
         }
         skippedCalendars.push({id:cal.id,summary:cal.summary||'',status:res.status});
@@ -2108,100 +1974,29 @@ async function fetchGoogleCalendarEvents(accessToken){
         break;
       }
       const json=await res.json();
-      items.push(...(json.items||[]).map(ev=>({...ev,_calendarId:cal.id,_calendarSummary:cal.summary||''})));
+      calendarItems.push(...(json.items||[]).map(ev=>({...ev,_calendarId:cal.id,_calendarSummary:cal.summary||''})));
       pageToken=json.nextPageToken||'';
     }while(pageToken);
-    if(calendarOk) syncedCalendars.push(cal);
+    if(calendarOk){syncedCalendars.push(cal);items.push(...calendarItems);}
   }
 
   return {
     items,
     calendars:syncedCalendars.map(cal=>({id:cal.id,summary:cal.summary||'',primary:!!cal.primary})),
     skippedCalendars,
-    primaryId:String(primary.id||''),
+    primaryId:selection.primaryId,
+    targetId:selection.targetId,
     minKey:localIsoDateFromDate(min),
     maxKey:localIsoDateFromDate(max)
   };
 }
 function applyGoogleCalendarEvents(result){
-  const minKey=result.minKey,maxKey=result.maxKey;
-  const existing=new Map();
-  Object.keys(data).forEach(key=>{
-    if(key<minKey||key>maxKey) return;
-    dayData(key).appts.forEach(a=>{
-      if(a.source!==GOOGLE_SYNC_SOURCE||!a.googleEventId) return;
-      const stable=a.googleEventKey||googleCalendarStableKey(a.googleCalendarId||'primary',a.googleEventId);
-      existing.set(stable,{key,appt:a});
-    });
-  });
-
-  const incomingKeys=new Set();
-  let imported=0,updated=0;
-  result.items.forEach(ev=>{
-    const converted=googleEventToAppointment(ev);
-    if(!converted) return;
-    if(converted.key<minKey||converted.key>maxKey) return;
-    const stable=String(converted.appt.googleEventKey);
-    incomingKeys.add(stable);
-    const found=existing.get(stable);
-    if(!found){
-      dayData(converted.key).appts.push(converted.appt);
-      imported++;
-      return;
-    }
-
-    const old=found.appt;
-    const preserved={
-      status:old.status||'pending',
-      flag:!!old.flag,
-      expenseLink:old.expenseLink||null,
-      colorKey:'coral',
-      category:'general',
-      subcategory:'general',
-      who:'mum'
-    };
-    const notesWereGoogleOwned=String(old.notes||'')===String(old.googleNotes||old.notes||'');
-    const next={...old,...converted.appt,...preserved};
-    next.googleNotes=converted.appt.googleNotes||'';
-    next.notes=notesWereGoogleOwned?next.googleNotes:String(old.notes||'');
-
-    if(found.key!==converted.key){
-      const oldDay=dayData(found.key);
-      oldDay.appts=oldDay.appts.filter(a=>a!==old);
-      dayData(converted.key).appts.push(next);
-    }else{
-      const dd=dayData(found.key);
-      const idx=dd.appts.indexOf(old);
-      if(idx>=0) dd.appts[idx]=next;
-    }
-    updated++;
-  });
-
-  let removed=0;
-  Object.keys(data).forEach(key=>{
-    if(key<minKey||key>maxKey) return;
-    const dd=dayData(key);
-    const before=dd.appts.length;
-    dd.appts=dd.appts.filter(a=>{
-      if(a.source!==GOOGLE_SYNC_SOURCE||!a.googleEventId) return true;
-      const stable=a.googleEventKey||googleCalendarStableKey(a.googleCalendarId||'primary',a.googleEventId);
-      return incomingKeys.has(stable);
-    });
-    removed+=before-dd.appts.length;
-  });
-
-  meta.googleCalendar={
-    ...(meta.googleCalendar||{}),
-    connected:true,
-    calendars:(result.calendars||[]),
-    lastSync:new Date().toISOString(),
-    imported,updated,removed,
-    total:incomingKeys.size
-  };
-  save();
-  render();
-  updateGoogleCalendarStatus();
-  return incomingKeys.size;
+  const merged=PlannerCore.mergeGoogleCalendar(data,result,googleEventToAppointment);
+  data=merged.data;
+  meta.googleCalendar={...(meta.googleCalendar||{}),connected:true,calendars:result.calendars||[],skippedCalendars:result.skippedCalendars||[],lastSync:new Date().toISOString(),imported:merged.imported,updated:merged.updated,removed:0,missing:merged.missing,total:merged.total};
+  const saved=save();render();updateGoogleCalendarStatus();
+  if(!saved) throw new Error('The calendar was read, but saving on this device failed. Download a planner backup before closing.');
+  return merged.total;
 }
 async function syncMumGoogleCalendar({interactive=false}={}){
   if(googleSyncInProgress) return;
@@ -2218,17 +2013,14 @@ async function syncMumGoogleCalendar({interactive=false}={}){
     }
 
     const result=await fetchGoogleCalendarEvents(token);
-    const primaryId=String(result.primaryId||'').toLowerCase();
-    if(primaryId!==MUM_GOOGLE_EMAIL.toLowerCase()){
-      persistGoogleSessionToken('',0);
-      throw new Error('Google authorized a different account. Martina Scheurer must be selected.');
-    }
+    if(String(result.targetId||'').toLowerCase()!==MUM_GOOGLE_EMAIL.toLowerCase()) throw new Error('Mum’s shared calendar could not be verified.');
 
     const imported=applyGoogleCalendarEvents(result);
     meta.googleCalendar={
       ...(meta.googleCalendar||{}),
       connected:true,
       connectedEmail:MUM_GOOGLE_EMAIL,
+      accountEmail:result.primaryId,
       lastSync:new Date().toISOString(),
       lastError:''
     };
@@ -2250,17 +2042,14 @@ async function finishMumGoogleCalendarConnection(tokenPromise,loginHint=MUM_GOOG
   try{
     const token=await tokenPromise;
     const result=await fetchGoogleCalendarEvents(token);
-    const primaryId=String(result.primaryId||'').toLowerCase();
-    if(primaryId!==MUM_GOOGLE_EMAIL.toLowerCase()){
-      persistGoogleSessionToken('',0);
-      throw new Error('Google authorized a different account. Select Martina Scheurer / '+MUM_GOOGLE_EMAIL+'.');
-    }
+    if(String(result.targetId||'').toLowerCase()!==MUM_GOOGLE_EMAIL.toLowerCase()) throw new Error('Mum’s shared calendar could not be verified.');
 
     const imported=applyGoogleCalendarEvents(result);
     meta.googleCalendar={
       ...(meta.googleCalendar||{}),
       connected:true,
       connectedEmail:MUM_GOOGLE_EMAIL,
+      accountEmail:result.primaryId,
       lastConnectedAt:new Date().toISOString(),
       lastSync:new Date().toISOString(),
       lastError:''
@@ -2268,12 +2057,14 @@ async function finishMumGoogleCalendarConnection(tokenPromise,loginHint=MUM_GOOG
     save();
     startAutomaticGoogleSync();
     updateGoogleCalendarStatus();
-    alert('Mum Google Calendar connected. '+imported+' events synced.');
+    alert('Mum Google Calendar connected. '+imported+' events synced. Your existing planner entries have been kept.');
+    return true;
   }catch(e){
     meta.googleCalendar={...(meta.googleCalendar||{}),connected:false,lastError:String(e?.message||e),lastErrorAt:new Date().toISOString()};
     persistPlannerLocal();
     updateGoogleCalendarStatus('Google Calendar: '+(e?.message||'connection failed'));
     alert(e?.message||'Google Calendar connection failed.');
+    return false;
   }
 }
 function openMumGoogleAccountChooser(){
@@ -2428,12 +2219,9 @@ function moneyEUR(n){
   return new Intl.NumberFormat('en-IE',{style:'currency',currency:'EUR'}).format(Number(n||0));
 }
 function appointmentUserNote(a){
-  return String(a?.notes||'')
-    .split('\n')
-    .map(line=>line.trim())
-    .filter(Boolean)
-    .filter(line=>!/^Linked (?:expense|income):\s*/i.test(line))
-    .join(' · ');
+  const note=String(a?.notes||'').split('\n').map(line=>line.trim()).filter(Boolean).filter(line=>!/^Linked (?:expense|income):\s*/i.test(line)).join(' · ');
+  const state=a?.googleSyncState?'No longer in Google Calendar · kept in Planner':'';
+  return [note,state].filter(Boolean).join(' · ');
 }
 function financeType(link){
   return String(link?.type||'expense')==='income'?'income':'expense';
@@ -2758,7 +2546,8 @@ function saveAppointmentFromModal(){
       old.appts=old.appts.filter(x=>x.id!==editingAppt.id);
     }
     if(repeat==='none'){
-      dayData(date).appts.push({id:editingAppt.isDefault?uid('a'):editingAppt.id,start,end,title,who:whoSel,category,subcategory,colorKey,notes,expenseLink,flag,status:editingAppt.status||'pending',...supportFields});
+      const fields={id:editingAppt.isDefault?uid('a'):editingAppt.id,start,end,title,who:whoSel,category,subcategory,colorKey,notes,expenseLink,flag,status:editingAppt.status||'pending',...supportFields};
+      dayData(date).appts.push(PlannerCore.editedAppointment(editingAppt,fields,editingApptKey,date));
     }else{
       recurring.push({id:uid('r'),type:'appointment',title,who:whoSel,category,subcategory,colorKey,notes,expenseLink:null,flag,startDate:date,start,end,repeat,interval});
     }
@@ -2931,6 +2720,8 @@ document.getElementById('rSave').onclick=()=>{
 
 // Backup / restore
 function downloadSafetyBackup(){
+  const snapshot=PlannerSafety.getLatestSnapshot();
+  if(snapshot){PlannerSafety.download({...PlannerSafety.payloadFromRaw(snapshot.raw),snapshot:snapshot.reason,createdAt:snapshot.savedAt,raw:snapshot.raw},'max-planner-safety-before-update.json');return;}
   try{
     const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V39)||localStorage.getItem(SAFETY_BACKUP_KEY_V36)||localStorage.getItem(SAFETY_BACKUP_KEY_V35)||localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
@@ -2940,23 +2731,26 @@ function downloadSafetyBackup(){
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
-function restoreSafetyBackup(){
+async function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V39)||localStorage.getItem(SAFETY_BACKUP_KEY_V36)||localStorage.getItem(SAFETY_BACKUP_KEY_V35)||localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
-    if(!raw){alert('No safety snapshot is available on this device.');return;}
-    if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
-    const p=JSON.parse(raw);
-    data=p.data&&typeof p.data==='object'?p.data:{};
-    recurring=Array.isArray(p.recurring)?p.recurring:[];
-    meta=p.meta&&typeof p.meta==='object'?p.meta:{disabledDefaults:[]};
-    if(!Array.isArray(meta.disabledDefaults))meta.disabledDefaults=[];
-    Object.keys(data).forEach(k=>migrateDay(data[k]));
-    migrateRecurringItems();
-    syncAllWorkSupportBlocks();
-    save();render();
-    document.getElementById('menuModal').classList.remove('open');
-    alert('Safety snapshot restored.');
-  }catch(e){alert('Could not restore the safety snapshot.');}
+    const snapshot=PlannerSafety.getLatestSnapshot();
+    let payload;
+    if(snapshot) payload=PlannerSafety.payloadFromRaw(snapshot.raw);
+    else{
+      const keys=[SAFETY_BACKUP_KEY_V39,SAFETY_BACKUP_KEY_V36,SAFETY_BACKUP_KEY_V35,SAFETY_BACKUP_KEY_V32,SAFETY_BACKUP_KEY_V30,SAFETY_BACKUP_KEY_V28,SAFETY_BACKUP_KEY_V27,SAFETY_BACKUP_KEY_V26,SAFETY_BACKUP_KEY_V25,SAFETY_BACKUP_KEY_V24,SAFETY_BACKUP_KEY_V22,SAFETY_BACKUP_KEY_V21,SAFETY_BACKUP_KEY_V20,SAFETY_BACKUP_KEY_V19,SAFETY_BACKUP_KEY_V18,SAFETY_BACKUP_KEY];
+      const raw=keys.map(key=>localStorage.getItem(key)).find(Boolean);
+      if(!raw){alert('No safety snapshot is available on this device.');return;}payload=JSON.parse(raw);
+    }
+    const next=PlannerCore.validateBackup(payload);
+    if(!confirm('Restore the safety snapshot? Your current planner will first be saved in another safety snapshot.')) return;
+    await PlannerSafety.snapshot('before-safety-restore');
+    data=next.data;recurring=next.recurring;meta=next.meta;
+    if(!Array.isArray(meta.disabledDefaults)) meta.disabledDefaults=[];
+    meta.driveBackup={...(meta.driveBackup||{}),enabled:false};
+    Object.keys(data).forEach(key=>migrateDay(data[key]));migrateRecurringItems();syncAllWorkSupportBlocks();
+    if(!save()) throw new Error('The snapshot could not be saved on this device. Download a recovery backup before closing.');
+    render();document.getElementById('menuModal').classList.remove('open');alert('Safety snapshot restored.');
+  }catch(error){alert(error.message||'Could not restore the safety snapshot.');}
 }
 function exportBackup(){
   const payload={app:'Max Planner',version:VERSION,exportedAt:new Date().toISOString(),data,recurring,meta};
@@ -2964,7 +2758,20 @@ function exportBackup(){
   const a=document.createElement('a');a.href=url;a.download='max-planner-backup-'+iso(new Date())+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function restoreBackup(file){
-  const reader=new FileReader();reader.onload=()=>{try{const p=JSON.parse(reader.result);if(!p||typeof p.data!=='object')throw new Error('Invalid backup');data=p.data;recurring=Array.isArray(p.recurring)?p.recurring:[];meta=p.meta&&typeof p.meta==='object'?p.meta:{disabledDefaults:[]};if(!Array.isArray(meta.disabledDefaults))meta.disabledDefaults=[];Object.keys(data).forEach(k=>migrateDay(data[k]));migrateRecurringItems();syncAllWorkSupportBlocks();save();document.getElementById('menuModal').classList.remove('open');render();alert('Backup restored.');}catch(e){alert('That file is not a valid planner backup.');}};reader.readAsText(file);
+  const reader=new FileReader();
+  reader.onload=async()=>{
+    try{
+      const next=PlannerCore.validateBackup(JSON.parse(reader.result));
+      await PlannerSafety.snapshot('before-file-restore');
+      data=next.data;recurring=next.recurring;meta=next.meta;
+      if(!Array.isArray(meta.disabledDefaults)) meta.disabledDefaults=[];
+      meta.driveBackup={...(meta.driveBackup||{}),enabled:false};
+      Object.keys(data).forEach(key=>migrateDay(data[key]));migrateRecurringItems();syncAllWorkSupportBlocks();
+      if(!save()) throw new Error('The restored planner could not be saved on this device. Download a recovery backup before closing.');
+      document.getElementById('menuModal').classList.remove('open');render();alert('Backup restored. Your previous planner was kept in a safety snapshot.');
+    }catch(error){alert(error.message||'That file is not a valid planner backup.');}
+  };
+  reader.onerror=()=>alert('The backup file could not be read.');reader.readAsText(file);
 }
 
 // Print / PDF
@@ -3021,8 +2828,8 @@ document.getElementById('btnMonth').onclick=()=>{mode='month';render();};
 document.getElementById('btnWeek').onclick=()=>{mode='week';render();};
 document.getElementById('btnDay').onclick=()=>{mode='day';render();};
 document.getElementById('todayBtn').onclick=goToday;
-document.getElementById('prevMonth').onclick=()=>{current.setMonth(current.getMonth()-1);render();};
-document.getElementById('nextMonth').onclick=()=>{current.setMonth(current.getMonth()+1);render();};
+document.getElementById('prevMonth').onclick=()=>{current=PlannerCore.moveMonth(current,-1);render();};
+document.getElementById('nextMonth').onclick=()=>{current=PlannerCore.moveMonth(current,1);render();};
 document.getElementById('prevWeek').onclick=()=>{current.setDate(current.getDate()-7);render();};
 document.getElementById('nextWeek').onclick=()=>{current.setDate(current.getDate()+7);render();};
 document.getElementById('prevDay').onclick=()=>{current.setDate(current.getDate()-1);render();};
@@ -3041,7 +2848,7 @@ dayEl.addEventListener('touchstart',e=>{touchX=e.touches[0].clientX;touchY=e.tou
 dayEl.addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-touchX,dy=e.changedTouches[0].clientY-touchY;if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5){current.setDate(current.getDate()+(dx<0?1:-1));render();}},{passive:true});
 
 // Menu
-document.getElementById('menuBtn').onclick=()=>{updateGoogleCalendarStatus();updateDriveBackupStatus();document.getElementById('menuModal').classList.add('open');};
+document.getElementById('menuBtn').onclick=()=>{updateGoogleCalendarStatus();updateDriveBackupStatus();document.getElementById('menuModal').classList.add('open');prepareDriveSignIn().catch(()=>{});};
 document.getElementById('menuClose').onclick=()=>document.getElementById('menuModal').classList.remove('open');
 document.getElementById('printWeekBtn').onclick=openPrintPreview;
 document.getElementById('backupBtn').onclick=()=>{exportBackup();document.getElementById('menuModal').classList.remove('open');};
@@ -3111,7 +2918,10 @@ if(installBtn){
 function offerServiceWorkerUpdate(reg){
   if(!reg || !reg.waiting) return;
   updateBanner.classList.add('show');
-  applyUpdateBtn.onclick=()=>reg.waiting?.postMessage({type:'SKIP_WAITING'});
+  applyUpdateBtn.onclick=async()=>{
+    try{await PlannerSafety.snapshot('before-code-update');reg.waiting?.postMessage({type:'SKIP_WAITING'});}
+    catch(error){PlannerSafety.showFailure(error.message);}
+  };
 }
 
 if('serviceWorker' in navigator && location.protocol!=='file:'){
@@ -3136,6 +2946,13 @@ if('serviceWorker' in navigator && location.protocol!=='file:'){
 syncStickyHeaderOffset();
 render();
 
+async function prepareDriveSignIn(){
+  const buttons=['driveBackupConnectBtn','driveBackupNowBtn','driveRestoreBtn'].map(id=>document.getElementById(id));
+  buttons.forEach(button=>button.disabled=true);
+  try{await ensureDriveTokenClient();}
+  catch(error){updateDriveBackupStatus(error.message,'error');}
+  finally{buttons.forEach(button=>button.disabled=false);}
+}
 function runWhenIdle(fn,timeout=1200){
   if('requestIdleCallback' in window) requestIdleCallback(()=>fn(),{timeout});
   else setTimeout(fn,250);
@@ -3152,6 +2969,7 @@ setTimeout(()=>{
 },450);
 setTimeout(scheduleAutomaticGoogleSync,900);
 setTimeout(resumeDriveBackupIfAuthorized,1050);
+runWhenIdle(()=>prepareDriveSignIn(),1600);
 </script>
 </body>
 </html>
