@@ -637,8 +637,9 @@ const SAFETY_BACKUP_KEY_V28='max-planner-safety-pre-google-calendar-sync-2026-10
 const SAFETY_BACKUP_KEY_V30='max-planner-safety-pre-google-drive-autobackup-2026-10-18';
 const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-10-18';
 const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
-const VERSION=35;
-const APP_BUILD='PWA 1.17.3';
+const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
+const VERSION=36;
+const APP_BUILD='PWA 1.18.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -766,6 +767,14 @@ try{
     localStorage.setItem(SAFETY_BACKUP_KEY_V35,JSON.stringify({
       app:'Max Planner',
       snapshot:'Pre-manual-Mum-Google-login safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V36)){
+    localStorage.setItem(SAFETY_BACKUP_KEY_V36,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-Samsung-ICS-import safety backup',
       createdAt:new Date().toISOString(),
       data,recurring,meta
     }));
@@ -1050,6 +1059,48 @@ const SEED={
  '2026-10-04':{notes:'',appts:[{start:'19:00',end:'23:00',title:'Work',who:'work',category:'general'}]}
 };
 Object.keys(SEED).forEach(k=>{if(!data[k]){data[k]=SEED[k];migrateDay(data[k]);}});
+
+// V36: one-time import from Mum's Samsung Calendar .ics backup.
+// Source window: 4 Oct 2026 onward. Explicit VEVENT entries only; old recurrence rules are not expanded.
+
+const SAMSUNG_ICS_MUM_IMPORT_V36=[{"date":"2026-10-04","start":"10:00","end":"12:00","title":"SAT","icsUid":"DATASYNC_CALENDAR_85399192443821014866803824105911_63d733c5-e594-436a-9eaa-048dcabd5fca@osp.com"},{"date":"2026-10-04","start":"19:00","end":"20:00","title":"Pflaster","icsUid":"DATASYNC_CALENDAR_92071236816940376667347506071918_7f6b6169-7f16-44af-b3ee-c2a9d138d68d@osp.com"},{"date":"2026-10-05","start":"09:00","end":"10:00","title":"Gym verschieben","icsUid":"DATASYNC_CALENDAR_09289671766210620562879670391618_618df891-44b9-49f8-aaae-cb976733499e@osp.com"},{"date":"2026-10-05","start":"10:00","end":"11:00","title":"Tierheim","icsUid":"DATASYNC_CALENDAR_01346812454204119469672997512835_632c9a7d-acc7-454a-b8a4-488239005b2b@osp.com"},{"date":"2026-10-05","start":"12:00","end":"13:00","title":"Markus lobemur","icsUid":"DATASYNC_CALENDAR_64719199658101460715297864013207_700bc65e-ae80-4978-afcd-e6eccb4ca9de@osp.com"},{"date":"2026-10-06","start":"11:00","end":"12:00","title":"Hundewalk","icsUid":"DATASYNC_CALENDAR_19692105939643879085965429594409_ce4fb15f-c210-418b-a6d3-75e688053a94@osp.com"},{"date":"2026-10-07","start":"10:00","end":"11:00","title":"10.42 gym","icsUid":"DATASYNC_CALENDAR_20580186452958538198397181214832_f3eb56a1-f999-479a-b967-ebc002613a3e@osp.com"},{"date":"2026-10-07","start":"11:00","end":"12:00","title":"Rolf sachen","icsUid":"DATASYNC_CALENDAR_77958771723384769574711962959612_2d462c64-ea52-4457-adfc-001e8cf7eb2d@osp.com"},{"date":"2026-10-07","start":"14:50","end":"16:50","title":"Gaby","icsUid":"DATASYNC_CALENDAR_96778327574777878900779027019879_c69dc041-8fa1-4aa3-8872-395e89bfd564@osp.com"},{"date":"2026-10-07","start":"19:00","end":"20:00","title":"Pflaster","icsUid":"DATASYNC_CALENDAR_24535139876377380843477110294303_cd35e56b-4b29-4a7b-9af8-cd7b0dc4ffc5@osp.com"},{"date":"2026-10-08","start":"10:00","end":"12:00","title":"10.00 hundewalk","icsUid":"DATASYNC_CALENDAR_43313671064222711954560031810196_da7a00d6-9992-40e9-b31b-b6b9d480004b@osp.com"},{"date":"2026-10-09","start":"08:00","end":"20:00","title":"Camper holen","icsUid":"DATASYNC_CALENDAR_41310460781420129010837471723433_0822eb36-1a92-4197-81eb-f1faa8d294d4@osp.com"},{"date":"2026-10-10","start":"10:00","end":"12:00","title":"Hunde hohlen","icsUid":"DATASYNC_CALENDAR_01245405315163723082312383890091_f45a6841-899d-4591-bc89-eb9b099554f2@osp.com"},{"date":"2026-10-10","start":"19:00","end":"20:00","title":"Pflaster","icsUid":"DATASYNC_CALENDAR_60000727129590163520012246144472_42218c95-64ad-40ef-b9f9-36d46e93654a@osp.com"},{"date":"2026-10-11","start":"15:00","end":"16:00","title":"15.00 oepping","icsUid":"DATASYNC_CALENDAR_34999151884664574228487279765482_6716717d-549a-4afd-9579-1abca5b8341c@osp.com"},{"date":"2026-10-11","start":"18:00","end":"19:00","title":"Gaby","icsUid":"DATASYNC_CALENDAR_09188900924529010306328434582290_cc222793-83b0-489c-a00c-f0655fc9ec68@osp.com"},{"date":"2026-10-12","start":"11:00","end":"12:00","title":"11.12 gym","icsUid":"DATASYNC_CALENDAR_32523357005668875862638805093984_e7577939-d0c0-476b-8609-cc949a87d208@osp.com"},{"date":"2026-10-12","start":"13:00","end":"14:00","title":"Vorvertrag","icsUid":"DATASYNC_CALENDAR_96813803024347849091866888445922_cb618d30-b0dc-41b9-ac42-bdd9230840c9@osp.com"},{"date":"2026-10-12","start":"14:00","end":"15:00","title":"Maklerin anrufen","icsUid":"DATASYNC_CALENDAR_88728541285231456750170652143234_72487bd0-16e2-478c-9874-b95addf232ea@osp.com"},{"date":"2026-10-13","start":"09:50","end":"10:50","title":"Rathaus Jarafuel","icsUid":"DATASYNC_CALENDAR_29700793632799860756653312938116_85804a22-4771-4b58-8ad2-05d14a7c8115@osp.com"},{"date":"2026-10-13","start":"11:00","end":"12:00","title":"Lali","icsUid":"DATASYNC_CALENDAR_77470372563245787733912710057739_4e646c91-afe9-4dff-962a-467a2678f725@osp.com"},{"date":"2026-10-13","start":"17:00","end":"18:00","title":"Thomas Herteux","icsUid":"DATASYNC_CALENDAR_12414174280821855949747669931156_54f8e929-c5db-46d6-be29-d9b3c53df5fe@osp.com"},{"date":"2026-10-13","start":"19:00","end":"20:00","title":"Pflaster","icsUid":"DATASYNC_CALENDAR_07234615056279106478334536147537_0acca70c-c04f-481b-b226-223cdc9c5cfb@osp.com"},{"date":"2026-10-14","start":"08:00","end":"09:00","title":"Markus frei","icsUid":"DATASYNC_CALENDAR_12406375054401032806000146141776_76137d1c-c0a2-460b-b191-e5b0994269ca@osp.com"},{"date":"2026-10-14","start":"09:00","end":"16:00","title":"FINCA","icsUid":"DATASYNC_CALENDAR_52668831162438127962589032524380_45abc9cf-e61b-4c42-a49c-76079be21c4c@osp.com"},{"date":"2026-10-15","start":"10:20","end":"11:20","title":"Heike El Pony","icsUid":"DATASYNC_CALENDAR_02985873987576337326447435739298_16e4aad5-1c70-4d98-8aff-469638814b5a@osp.com"},{"date":"2026-10-15","start":"12:00","end":"13:00","title":"11.48 gym","icsUid":"DATASYNC_CALENDAR_81851188068154305920330481350593_df30bc1e-bd4f-471e-8a30-d3939a5e383a@osp.com"},{"date":"2026-10-15","start":"13:00","end":"14:00","title":"Siegler","icsUid":"DATASYNC_CALENDAR_11499455928422530050895565572326_44b93d42-e92b-4f57-a9cb-5c86720a73e3@osp.com"},{"date":"2026-10-15","start":"16:00","end":"17:00","title":"Ruth Geld bringen","icsUid":"DATASYNC_CALENDAR_42334080212481409919004575576699_7724d2f7-19b4-431a-a821-a69093e8ced4@osp.com"},{"date":"2026-10-15","start":"17:00","end":"19:00","title":"17.30 Kosmetik","icsUid":"DATASYNC_CALENDAR_37353744722704923828514681156212_ddbe302f-a69c-4706-8edd-072913a87712@osp.com"},{"date":"2026-10-16","start":"12:00","end":"13:30","title":"12.30 oncologa+Blut","icsUid":"DATASYNC_CALENDAR_40194467402108370211020228771360_171337de-231d-4d5d-a00c-dcfdd4ab4cdc@osp.com"},{"date":"2026-10-16","start":"15:00","end":"16:30","title":"15.00 Heike Punta Prima","icsUid":"DATASYNC_CALENDAR_71493242232052637486645774545733_94594cf0-8799-41a0-b3f1-8a818f151f5a@osp.com"},{"date":"2026-10-16","start":"19:00","end":"20:00","title":"Pflaster","icsUid":"DATASYNC_CALENDAR_38516135233431358528053028700848_2bce5e62-201a-4271-81f5-52e2a3f8337c@osp.com"},{"date":"2026-10-17","start":"10:00","end":"11:00","title":"Gaby","icsUid":"DATASYNC_CALENDAR_60437686600517519049498249696828_7c138894-d8c0-4f1d-81d4-355dffb2a324@osp.com"},{"date":"2026-10-17","start":"11:00","end":"12:00","title":"Teo","icsUid":"DATASYNC_CALENDAR_45265355089356228056471220387156_abe9f876-1c35-452c-8339-8e2ea1ac37c3@osp.com"},{"date":"2026-10-18","start":"08:00","end":"09:00","title":"Markus frei","icsUid":"DATASYNC_CALENDAR_13648932681692953962430713289377_9eb0a45a-92a2-4fd8-809e-0dc6bedd34c9@osp.com"},{"date":"2026-10-18","start":"10:00","end":"11:00","title":"SAT","icsUid":"DATASYNC_CALENDAR_02884361462223285798849666351584_8da2cb55-1857-4457-acf7-7ca47de46d87@osp.com"},{"date":"2026-10-18","start":"18:00","end":"20:00","title":"Essen mit Thomas u Claudia","icsUid":"DATASYNC_CALENDAR_66707312531307930287062992134035_d60d589e-ac23-4f31-8901-32a471cfca9f@osp.com"},{"date":"2026-10-19","start":"09:00","end":"10:00","title":"Termin Mutter","icsUid":"DATASYNC_CALENDAR_37249379413316610641157072839086_46da73da-f0ce-4bf1-bff1-6a9b676ea259@osp.com"},{"date":"2026-10-19","start":"11:00","end":"12:00","title":"11.30 gym","icsUid":"DATASYNC_CALENDAR_67114324706327787418175758472304_b078bb4d-9f5e-4e21-b4ca-dda39b29d0d2@osp.com"},{"date":"2026-10-19","start":"16:00","end":"17:00","title":"Tresor Heike","icsUid":"DATASYNC_CALENDAR_28934876164461370050649203253111_7f62b30b-fd21-4b93-a849-f6708fb464a6@osp.com"},{"date":"2026-10-19","start":"19:00","end":"20:00","title":"Pflaster","icsUid":"DATASYNC_CALENDAR_89120387405463383317917908137874_0ee6cfce-ecbe-4940-800b-c9705bf52d89@osp.com"},{"date":"2026-10-20","start":"10:00","end":"13:00","title":"10.00 Behandlung","icsUid":"DATASYNC_CALENDAR_11875547274534858962307031636268_73676c42-e649-45eb-9e1c-5645d1fe5188@osp.com"},{"date":"2026-10-21","start":"02:00","end":"03:00","title":"Geb. Heike Schuermann","icsUid":"DATASYNC_CALENDAR_52310620329733074860086602616860_3762aac1-71c0-4582-9e90-ba965957cb10@osp.com"},{"date":"2026-10-21","start":"13:00","end":"17:00","title":"15.00 Heike Punta Prima","icsUid":"DATASYNC_CALENDAR_13787033974951563524603135361825_a4355275-1ae3-4d4b-8abb-f39152811748@osp.com"},{"date":"2026-10-22","start":"11:30","end":"13:30","title":"12.00 Kardiologe mit Gaby","icsUid":"DATASYNC_CALENDAR_29646423682113643222537919886664_3639d720-09d8-42fd-b8a2-633bb0056609@osp.com"},{"date":"2026-10-23","start":"11:00","end":"12:00","title":"11.12 gym","icsUid":"DATASYNC_CALENDAR_60191158010397458660337701481475_5a2eef5d-7255-4d3c-9728-d051cda4ae95@osp.com"},{"date":"2026-10-23","start":"19:00","end":"21:00","title":"Flughafen Angelika","icsUid":"DATASYNC_CALENDAR_92820900632237820779835704106124_4053eaab-cbd6-4940-9ad0-5959c77e74fb@osp.com"},{"date":"2026-10-27","start":"08:00","end":"12:00","title":"Notar Finca?","icsUid":"DATASYNC_CALENDAR_28500030528283667441458621917014_1fbf9b6c-64bc-488f-8412-20d55f5b16ed@osp.com"},{"date":"2026-10-28","start":"08:00","end":"09:00","title":"Ankunft Heinz Brunglinghaus","icsUid":"DATASYNC_CALENDAR_05644382738824716833558251585495_8f59c4a8-1f97-414a-bd07-1ff1db994990@osp.com"},{"date":"2026-10-29","start":"09:00","end":"12:00","title":"Notar Heinz","icsUid":"DATASYNC_CALENDAR_57309626930681022293420152397293_26cd32bc-044c-44b6-9097-bdcaa8835310@osp.com"},{"date":"2026-10-31","start":"09:00","end":"10:00","title":"Uhr umstellen","icsUid":"DATASYNC_CALENDAR_29572443659904461026519713913394_655b9b5c-a6f3-49d4-8121-dda4be1fecfe@osp.com"},{"date":"2026-11-01","start":"08:00","end":"09:00","title":"Tracker pausieren.","icsUid":"DATASYNC_CALENDAR_75619851009873716798598914238376_58338761-7dd2-443a-81af-aac2874f122a@osp.com"},{"date":"2026-11-03","start":"08:00","end":"09:00","title":"Abreise Heinz B.","icsUid":"DATASYNC_CALENDAR_73785888904447817757276990108245_440d5418-f914-4971-9f87-bc280cec0cd8@osp.com"},{"date":"2026-11-10","start":"08:00","end":"09:00","title":"Abreise Gaby","icsUid":"DATASYNC_CALENDAR_38839873650278200714295108051375_695e79b4-e8f2-425c-a0db-f0577026cc54@osp.com"},{"date":"2026-12-23","start":"12:30","end":"13:30","title":"Gym bezahlen 24.","icsUid":"DATASYNC_CALENDAR_99402435582261897801437911026682_511bd213-5e76-4393-a34f-d9343b441ecd@osp.com"},{"date":"2026-12-30","start":"08:00","end":"09:00","title":"Tracker kündigen etc.","icsUid":"DATASYNC_CALENDAR_05446364736493004328443938493703_4625b2e5-171d-411a-aa2c-72de597fea1c@osp.com"},{"date":"2027-05-28","start":"08:00","end":"09:00","title":"Evtl neuronation per 28/7 kündigen.","icsUid":"DATASYNC_CALENDAR_17175066524592344003046936032458_6ee887f6-5319-48cd-b6a5-280e3618f363@osp.com"}];
+if(!meta.samsungIcsMumImportV36Applied){
+  let added=0;
+  SAMSUNG_ICS_MUM_IMPORT_V36.forEach(src=>{
+    const dd=dayData(src.date);
+    const titleKey=String(src.title||'').trim().toLowerCase();
+    const duplicate=dd.appts.some(a=>
+      (a.icsUid && a.icsUid===src.icsUid) ||
+      (
+        normalizeTime(a.start)===normalizeTime(src.start) &&
+        normalizeTime(a.end||'')===normalizeTime(src.end||'') &&
+        String(a.title||'').trim().toLowerCase()===titleKey
+      )
+    );
+    if(duplicate) return;
+    dd.appts.push({
+      id:uid('a'),
+      start:src.start,
+      end:src.end,
+      title:src.title,
+      who:'mum',
+      category:'general',
+      subcategory:'general',
+      colorKey:'coral',
+      notes:'',
+      flag:false,
+      status:'pending',
+      source:'samsung-ics-mum-2026-10-18',
+      icsUid:src.icsUid
+    });
+    added++;
+  });
+  meta.samsungIcsMumImportV36Applied=true;
+  meta.samsungIcsMumImportV36Count=added;
+  meta.samsungIcsMumImportV36At=new Date().toISOString();
+  save();
+}
+
 
 // V4: consolidate Max's confirmed work roster into one continuous 19:00–23:00 block.
 if(!meta.workScheduleV4Applied){
@@ -2734,17 +2785,17 @@ document.getElementById('rSave').onclick=()=>{
 // Backup / restore
 function downloadSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V35)||localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V36)||localStorage.getItem(SAFETY_BACKUP_KEY_V35)||localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     const blob=new Blob([raw],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-manual-mum-google-login-2026-10-18.json';
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-samsung-ics-import-2026-10-18.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
 function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V35)||localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V36)||localStorage.getItem(SAFETY_BACKUP_KEY_V35)||localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
     const p=JSON.parse(raw);
