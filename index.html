@@ -324,6 +324,11 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 #updateBanner span{flex:1;font-size:13px;font-weight:700;}
 #updateBanner button{border:none;border-radius:9px;background:var(--accent);color:#fff;padding:8px 11px;font-weight:700;}
 .pwaMeta{font-size:11px;color:var(--sub);text-align:center;margin-top:8px;}
+#driveBackupStatus{font-size:12px;line-height:1.45;text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);margin:0;}
+#driveBackupStatus.connected{background:var(--ok-bg);color:var(--ok);border-color:var(--ok);}
+#driveBackupStatus.paused{background:var(--sticky-bg);color:var(--ink);border-color:var(--sticky-border);}
+#driveBackupStatus.error{background:var(--danger-bg);color:var(--danger);border-color:var(--danger);}
+#driveBackupConnectBtn.driveConnected{background:var(--ok-bg);color:var(--ok);border-color:var(--ok);}
 </style>
 
 <meta name="theme-color" content="#1d4e46">
@@ -615,8 +620,8 @@ const SAFETY_BACKUP_KEY_V27='max-planner-safety-pre-todo-backward-move-2026-10-1
 const SAFETY_BACKUP_KEY_V28='max-planner-safety-pre-google-calendar-sync-2026-10-18';
 const SAFETY_BACKUP_KEY_V30='max-planner-safety-pre-google-drive-autobackup-2026-10-18';
 const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-10-18';
-const VERSION=32;
-const APP_BUILD='PWA 1.17.0';
+const VERSION=33;
+const APP_BUILD='PWA 1.17.1';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -1460,17 +1465,49 @@ function syncStickyHeaderOffset(){
   const appHeader=document.querySelector('body > header');
   if(appHeader) document.documentElement.style.setProperty('--header-height',Math.ceil(appHeader.getBoundingClientRect().height)+'px');
 }
-function driveBackupStatusText(){
+function driveBackupStatusInfo(){
   const cfg=meta.driveBackup||{};
-  if(!cfg.enabled) return 'Google Drive backup: not enabled';
-  if(cfg.lastBackupAt){
-    return 'Google Drive backup · Last saved '+new Date(cfg.lastBackupAt).toLocaleString();
+  const hasActiveToken=(driveAccessToken&&driveAccessTokenExpiry>Date.now())||restoreDriveSessionToken();
+  const last=cfg.lastBackupAt?new Date(cfg.lastBackupAt).toLocaleString():'Not yet';
+  if(!cfg.enabled){
+    return {
+      state:'off',
+      text:'Google Drive backup: not connected',
+      button:'Connect My Google Drive'
+    };
   }
-  return 'Google Drive backup enabled · waiting for first backup';
+  if(hasActiveToken){
+    return {
+      state:'connected',
+      text:'✓ Google Drive connected\nAutomatic backup: ON · after every planner change\nLast successful backup: '+last,
+      button:'✓ Google Drive Connected'
+    };
+  }
+  return {
+    state:'paused',
+    text:'✓ Google Drive backup configured\nAutomatic backup: PAUSED · reconnect required\nLast successful backup: '+last,
+    button:'Reconnect My Google Drive'
+  };
 }
-function updateDriveBackupStatus(text){
+function driveBackupStatusText(){
+  return driveBackupStatusInfo().text;
+}
+function updateDriveBackupStatus(text,state){
   const el=document.getElementById('driveBackupStatus');
-  if(el) el.textContent=text||driveBackupStatusText();
+  const btn=document.getElementById('driveBackupConnectBtn');
+  if(!el) return;
+  const info=driveBackupStatusInfo();
+  const finalState=state||info.state;
+  el.classList.remove('connected','paused','error');
+  if(finalState==='connected') el.classList.add('connected');
+  else if(finalState==='paused') el.classList.add('paused');
+  else if(finalState==='error') el.classList.add('error');
+  el.textContent=text||info.text;
+  el.style.whiteSpace='pre-line';
+  if(btn){
+    btn.textContent=info.button;
+    btn.classList.toggle('driveConnected',info.state==='connected');
+  }
 }
 function persistDriveSessionToken(token,expiresIn){
   driveAccessToken=token||'';
@@ -1576,7 +1613,7 @@ async function uploadDriveBackup(){
   if(driveBackupInProgress){driveBackupQueued=true;return false;}
   driveBackupInProgress=true;
   driveBackupQueued=false;
-  updateDriveBackupStatus('Google Drive backup: saving…');
+  updateDriveBackupStatus('Google Drive connected\nAutomatic backup: saving now…','connected');
   try{
     let fileId=await findDriveBackupFileId();
     if(!fileId) fileId=await createDriveBackupFile();
@@ -1599,7 +1636,7 @@ async function uploadDriveBackup(){
   }catch(e){
     meta.driveBackup={...(meta.driveBackup||{}),enabled:true,lastError:String(e?.message||e),lastErrorAt:new Date().toISOString()};
     persistPlannerLocal();
-    updateDriveBackupStatus('Google Drive backup: '+(e?.message||'failed'));
+    updateDriveBackupStatus('Google Drive backup error\n'+(e?.message||'Backup failed'),'error');
     throw e;
   }finally{
     driveBackupInProgress=false;
@@ -1616,21 +1653,22 @@ function scheduleDriveBackup(delay=1400){
     if((driveAccessToken&&driveAccessTokenExpiry>Date.now())||restoreDriveSessionToken()){
       uploadDriveBackup().catch(()=>{});
     }else{
-      updateDriveBackupStatus('Google Drive backup paused · reconnect required');
+      updateDriveBackupStatus('✓ Google Drive backup configured\nAutomatic backup: PAUSED · reconnect required\nLast successful backup: '+(meta.driveBackup?.lastBackupAt?new Date(meta.driveBackup.lastBackupAt).toLocaleString():'Not yet'),'paused');
     }
   },delay);
 }
 async function enableDriveBackup(){
-  updateDriveBackupStatus('Google Drive backup: waiting for authorization…');
+  updateDriveBackupStatus('Google Drive: waiting for authorization…','paused');
   try{
     await requestDriveAccessToken('consent');
     // Safety rule: the first Drive action is always UPLOAD of current local planner data.
     meta.driveBackup={...(meta.driveBackup||{}),enabled:true};
     persistPlannerLocal();
     await uploadDriveBackup();
+    updateDriveBackupStatus();
     alert('Google Drive backup enabled. Your current planner has been backed up.');
   }catch(e){
-    updateDriveBackupStatus('Google Drive backup: '+(e?.message||'connection failed'));
+    updateDriveBackupStatus('Google Drive connection failed\n'+(e?.message||'Connection failed'),'error');
     alert(e?.message||'Google Drive backup could not be enabled.');
   }
 }
@@ -1656,7 +1694,7 @@ function disconnectDriveBackup(){
   }
   meta.driveBackup={...(meta.driveBackup||{}),enabled:false};
   persistPlannerLocal();
-  updateDriveBackupStatus('Google Drive backup: not enabled');
+  updateDriveBackupStatus('Google Drive backup: not connected');
 }
 async function restorePlannerFromDrive(){
   try{
@@ -1691,7 +1729,7 @@ async function restorePlannerFromDrive(){
     syncAllWorkSupportBlocks();
     persistPlannerLocal();
     render();
-    updateDriveBackupStatus('Google Drive backup restored · '+savedAt);
+    updateDriveBackupStatus('✓ Google Drive connected\nPlanner restored from backup saved '+savedAt+'\nAutomatic backup: ON · after every planner change','connected');
     alert('Planner restored from Google Drive.');
   }catch(e){
     alert(e?.message||'Could not restore the Google Drive backup.');
@@ -1702,7 +1740,7 @@ function resumeDriveBackupIfAuthorized(){
   if(restoreDriveSessionToken()){
     scheduleDriveBackup(800);
   }else{
-    updateDriveBackupStatus('Google Drive backup paused · reconnect required');
+    updateDriveBackupStatus('✓ Google Drive backup configured\nAutomatic backup: PAUSED · reconnect required\nLast successful backup: '+(meta.driveBackup?.lastBackupAt?new Date(meta.driveBackup.lastBackupAt).toLocaleString():'Not yet'),'paused');
   }
 }
 
