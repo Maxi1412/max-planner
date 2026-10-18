@@ -508,6 +508,7 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
     <div id="googleCalendarStatus" class="pwaMeta">Google Calendar: not connected</div>
     <button id="driveBackupConnectBtn">Enable Google Drive backup</button>
     <button id="driveBackupNowBtn">Back up to Google Drive now</button>
+    <button id="driveRestoreBtn">Restore planner from Google Drive</button>
     <div id="driveBackupStatus" class="pwaMeta">Google Drive backup: not enabled</div>
     <button id="backupBtn">Export backup</button>
     <button id="restoreBtn">Restore backup</button>
@@ -613,7 +614,7 @@ const SAFETY_BACKUP_KEY_V27='max-planner-safety-pre-todo-backward-move-2026-10-1
 const SAFETY_BACKUP_KEY_V28='max-planner-safety-pre-google-calendar-sync-2026-10-18';
 const SAFETY_BACKUP_KEY_V30='max-planner-safety-pre-google-drive-autobackup-2026-10-18';
 const VERSION=30;
-const APP_BUILD='PWA 1.15.0';
+const APP_BUILD='PWA 1.15.1';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -1633,6 +1634,45 @@ async function manualDriveBackup(){
     alert('Planner backed up to Google Drive.');
   }catch(e){
     alert(e?.message||'Google Drive backup failed.');
+  }
+}
+async function restorePlannerFromDrive(){
+  try{
+    if(!((driveAccessToken&&driveAccessTokenExpiry>Date.now())||restoreDriveSessionToken())){
+      await requestDriveAccessToken('');
+    }
+    const fileId=await findDriveBackupFileId();
+    if(!fileId){alert('No Max Planner backup was found in this Google Drive account.');return;}
+    const remote=await driveApiJson('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(fileId)+'?alt=media');
+    if(!remote||remote.app!=='Max Planner'||typeof remote.data!=='object'){
+      throw new Error('The Google Drive backup is not a valid Max Planner backup.');
+    }
+    const savedAt=remote.savedAt?new Date(remote.savedAt).toLocaleString():'unknown time';
+    if(!confirm('Restore the Max Planner backup saved '+savedAt+'?\n\nThis will replace the planner data currently stored on this device.')) return;
+
+    try{
+      localStorage.setItem('max-planner-safety-before-drive-restore-latest',JSON.stringify({
+        app:'Max Planner',
+        snapshot:'Before Google Drive restore',
+        createdAt:new Date().toISOString(),
+        data,recurring,meta
+      }));
+    }catch(e){}
+
+    data=remote.data;
+    recurring=Array.isArray(remote.recurring)?remote.recurring:[];
+    meta=remote.meta&&typeof remote.meta==='object'?remote.meta:{disabledDefaults:[]};
+    if(!Array.isArray(meta.disabledDefaults)) meta.disabledDefaults=[];
+    meta.driveBackup={...(meta.driveBackup||{}),enabled:true,fileId};
+    Object.keys(data).forEach(k=>migrateDay(data[k]));
+    migrateRecurringItems();
+    syncAllWorkSupportBlocks();
+    persistPlannerLocal();
+    render();
+    updateDriveBackupStatus('Google Drive backup restored · '+savedAt);
+    alert('Planner restored from Google Drive.');
+  }catch(e){
+    alert(e?.message||'Could not restore the Google Drive backup.');
   }
 }
 function resumeDriveBackupIfAuthorized(){
@@ -2716,6 +2756,7 @@ document.getElementById('googleSyncBtn').onclick=()=>syncMumGoogleCalendar({inte
 document.getElementById('googleDisconnectBtn').onclick=()=>disconnectMumGoogleCalendar();
 document.getElementById('driveBackupConnectBtn').onclick=()=>enableDriveBackup();
 document.getElementById('driveBackupNowBtn').onclick=()=>manualDriveBackup();
+document.getElementById('driveRestoreBtn').onclick=()=>restorePlannerFromDrive();
 document.getElementById('recClose').onclick=()=>document.getElementById('recurringModal').classList.remove('open');
 document.getElementById('recAdd').onclick=()=>openRecurringEditor(null);
 
