@@ -506,6 +506,9 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
     <button id="googleSyncBtn">Sync Mum Google Calendar</button>
     <button id="googleDisconnectBtn">Disconnect Google Calendar</button>
     <div id="googleCalendarStatus" class="pwaMeta">Google Calendar: not connected</div>
+    <button id="driveBackupConnectBtn">Enable Google Drive backup</button>
+    <button id="driveBackupNowBtn">Back up to Google Drive now</button>
+    <div id="driveBackupStatus" class="pwaMeta">Google Drive backup: not enabled</div>
     <button id="backupBtn">Export backup</button>
     <button id="restoreBtn">Restore backup</button>
     <button id="safetyBackupBtn">Download safety snapshot</button>
@@ -608,8 +611,9 @@ const SAFETY_BACKUP_KEY_V25='max-planner-safety-pre-income-links-2026-10-13';
 const SAFETY_BACKUP_KEY_V26='max-planner-safety-pre-note-display-performance-2026-10-13';
 const SAFETY_BACKUP_KEY_V27='max-planner-safety-pre-todo-backward-move-2026-10-16';
 const SAFETY_BACKUP_KEY_V28='max-planner-safety-pre-google-calendar-sync-2026-10-18';
-const VERSION=29;
-const APP_BUILD='PWA 1.14.2';
+const SAFETY_BACKUP_KEY_V30='max-planner-safety-pre-google-drive-autobackup-2026-10-18';
+const VERSION=30;
+const APP_BUILD='PWA 1.15.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -713,6 +717,14 @@ try{
     localStorage.setItem(SAFETY_BACKUP_KEY_V28,JSON.stringify({
       app:'Max Planner',
       snapshot:'Pre-Google-Calendar-sync safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V30)){
+    localStorage.setItem(SAFETY_BACKUP_KEY_V30,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-Google-Drive-autobackup safety backup',
       createdAt:new Date().toISOString(),
       data,recurring,meta
     }));
@@ -852,15 +864,32 @@ function repeatLabel(r){
 }
 const GOOGLE_CALENDAR_CLIENT_ID='472362575652-33sufdi0inj2kljqrg81587vq7c15fhc.apps.googleusercontent.com';
 const GOOGLE_CALENDAR_SCOPE='https://www.googleapis.com/auth/calendar.readonly';
+const GOOGLE_DRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata';
 const GOOGLE_SYNC_SOURCE='google-calendar-mum';
 const GOOGLE_TOKEN_SESSION_KEY='max-planner-google-calendar-token';
+const GOOGLE_DRIVE_TOKEN_SESSION_KEY='max-planner-google-drive-token';
+const GOOGLE_DRIVE_BACKUP_FILENAME='max-planner-backup.json';
 let googleTokenClient=null;
 let googleAccessToken='';
 let googleAccessTokenExpiry=0;
 let googleSyncInProgress=false;
+let driveTokenClient=null;
+let driveAccessToken='';
+let driveAccessTokenExpiry=0;
+let driveBackupTimer=null;
+let driveBackupInProgress=false;
+let driveBackupQueued=false;
 
+function persistPlannerLocal(){
+  try{
+    localStorage.setItem(DATA_KEY,JSON.stringify(data));
+    localStorage.setItem(RECUR_KEY,JSON.stringify(recurring));
+    localStorage.setItem(META_KEY,JSON.stringify(meta));
+  }catch(e){}
+}
 function save(){
-  try{localStorage.setItem(DATA_KEY,JSON.stringify(data));localStorage.setItem(RECUR_KEY,JSON.stringify(recurring));localStorage.setItem(META_KEY,JSON.stringify(meta));}catch(e){}
+  persistPlannerLocal();
+  if(meta.driveBackup?.enabled) scheduleDriveBackup();
 }
 function dayData(key){ if(!data[key]) data[key]={appts:[],todos:[],noteItems:[]}; migrateDay(data[key]); return data[key]; }
 
@@ -1419,6 +1448,202 @@ function syncStickyHeaderOffset(){
   const appHeader=document.querySelector('body > header');
   if(appHeader) document.documentElement.style.setProperty('--header-height',Math.ceil(appHeader.getBoundingClientRect().height)+'px');
 }
+function driveBackupStatusText(){
+  const cfg=meta.driveBackup||{};
+  if(!cfg.enabled) return 'Google Drive backup: not enabled';
+  if(cfg.lastBackupAt){
+    return 'Google Drive backup · Last saved '+new Date(cfg.lastBackupAt).toLocaleString();
+  }
+  return 'Google Drive backup enabled · waiting for first backup';
+}
+function updateDriveBackupStatus(text){
+  const el=document.getElementById('driveBackupStatus');
+  if(el) el.textContent=text||driveBackupStatusText();
+}
+function persistDriveSessionToken(token,expiresIn){
+  driveAccessToken=token||'';
+  driveAccessTokenExpiry=Date.now()+Math.max(0,Number(expiresIn||3600)-60)*1000;
+  try{
+    if(token) sessionStorage.setItem(GOOGLE_DRIVE_TOKEN_SESSION_KEY,JSON.stringify({token,expiry:driveAccessTokenExpiry}));
+    else sessionStorage.removeItem(GOOGLE_DRIVE_TOKEN_SESSION_KEY);
+  }catch(e){}
+}
+function restoreDriveSessionToken(){
+  try{
+    const raw=sessionStorage.getItem(GOOGLE_DRIVE_TOKEN_SESSION_KEY);
+    if(!raw) return false;
+    const p=JSON.parse(raw);
+    if(!p?.token||Number(p.expiry)<=Date.now()){
+      sessionStorage.removeItem(GOOGLE_DRIVE_TOKEN_SESSION_KEY);
+      return false;
+    }
+    driveAccessToken=p.token;
+    driveAccessTokenExpiry=Number(p.expiry);
+    return true;
+  }catch(e){return false;}
+}
+async function ensureDriveTokenClient(){
+  await loadGoogleIdentityScript();
+  if(driveTokenClient) return driveTokenClient;
+  driveTokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:GOOGLE_CALENDAR_CLIENT_ID,
+    scope:GOOGLE_DRIVE_SCOPE,
+    callback:()=>{}
+  });
+  return driveTokenClient;
+}
+function requestDriveAccessToken(promptMode=''){
+  return new Promise(async(resolve,reject)=>{
+    try{
+      const tc=await ensureDriveTokenClient();
+      tc.callback=(resp)=>{
+        if(resp?.error){reject(new Error(resp.error_description||resp.error));return;}
+        if(!resp?.access_token){reject(new Error('Google did not return a Drive access token.'));return;}
+        if(!google.accounts.oauth2.hasGrantedAllScopes(resp,GOOGLE_DRIVE_SCOPE)){
+          reject(new Error('Google Drive backup permission was not granted.'));
+          return;
+        }
+        persistDriveSessionToken(resp.access_token,resp.expires_in);
+        resolve(resp.access_token);
+      };
+      tc.requestAccessToken({prompt:promptMode});
+    }catch(e){reject(e);}
+  });
+}
+function buildDriveBackupPayload(){
+  return {
+    app:'Max Planner',
+    version:VERSION,
+    build:APP_BUILD,
+    savedAt:new Date().toISOString(),
+    data,
+    recurring,
+    meta
+  };
+}
+async function driveApiJson(url,options={}){
+  const token=(driveAccessToken&&driveAccessTokenExpiry>Date.now())?driveAccessToken:(restoreDriveSessionToken()?driveAccessToken:'');
+  if(!token) throw Object.assign(new Error('Google Drive authorization has expired. Tap Enable Google Drive backup once to reconnect.'),{code:'AUTH'});
+  const headers={...(options.headers||{}),Authorization:'Bearer '+token};
+  const res=await fetch(url,{...options,headers});
+  if(res.status===401){
+    persistDriveSessionToken('',0);
+    throw Object.assign(new Error('Google Drive authorization has expired. Tap Enable Google Drive backup once to reconnect.'),{code:'AUTH'});
+  }
+  if(!res.ok){
+    let detail='';
+    try{detail=(await res.json())?.error?.message||'';}catch(e){}
+    if(res.status===403 && /disabled|has not been used|not enabled/i.test(detail)){
+      throw Object.assign(new Error('Google Drive API is not enabled for the Max Planner Google project.'),{code:'API_DISABLED'});
+    }
+    throw new Error(detail||('Google Drive request failed ('+res.status+').'));
+  }
+  if(res.status===204) return null;
+  const txt=await res.text();
+  return txt?JSON.parse(txt):null;
+}
+async function findDriveBackupFileId(){
+  const known=String(meta.driveBackup?.fileId||'');
+  if(known) return known;
+  const q=encodeURIComponent("name='"+GOOGLE_DRIVE_BACKUP_FILENAME.replace(/'/g,"\\'")+"' and trashed=false");
+  const url='https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=10&fields=files(id,name,modifiedTime)&q='+q;
+  const json=await driveApiJson(url);
+  const file=(json?.files||[]).sort((a,b)=>String(b.modifiedTime||'').localeCompare(String(a.modifiedTime||'')))[0];
+  return file?.id||'';
+}
+async function createDriveBackupFile(){
+  const json=await driveApiJson('https://www.googleapis.com/drive/v3/files?fields=id,name',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:GOOGLE_DRIVE_BACKUP_FILENAME,parents:['appDataFolder'],mimeType:'application/json'})
+  });
+  if(!json?.id) throw new Error('Google Drive did not create the backup file.');
+  return String(json.id);
+}
+async function uploadDriveBackup(){
+  if(driveBackupInProgress){driveBackupQueued=true;return false;}
+  driveBackupInProgress=true;
+  driveBackupQueued=false;
+  updateDriveBackupStatus('Google Drive backup: saving…');
+  try{
+    let fileId=await findDriveBackupFileId();
+    if(!fileId) fileId=await createDriveBackupFile();
+    const payload=buildDriveBackupPayload();
+    await driveApiJson('https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(fileId)+'?uploadType=media',{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+    meta.driveBackup={
+      ...(meta.driveBackup||{}),
+      enabled:true,
+      fileId,
+      lastBackupAt:payload.savedAt,
+      lastError:''
+    };
+    persistPlannerLocal();
+    updateDriveBackupStatus();
+    return true;
+  }catch(e){
+    meta.driveBackup={...(meta.driveBackup||{}),enabled:true,lastError:String(e?.message||e),lastErrorAt:new Date().toISOString()};
+    persistPlannerLocal();
+    updateDriveBackupStatus('Google Drive backup: '+(e?.message||'failed'));
+    throw e;
+  }finally{
+    driveBackupInProgress=false;
+    if(driveBackupQueued){
+      driveBackupQueued=false;
+      setTimeout(()=>uploadDriveBackup().catch(()=>{}),500);
+    }
+  }
+}
+function scheduleDriveBackup(delay=1400){
+  if(!meta.driveBackup?.enabled) return;
+  clearTimeout(driveBackupTimer);
+  driveBackupTimer=setTimeout(()=>{
+    if((driveAccessToken&&driveAccessTokenExpiry>Date.now())||restoreDriveSessionToken()){
+      uploadDriveBackup().catch(()=>{});
+    }else{
+      updateDriveBackupStatus('Google Drive backup paused · reconnect required');
+    }
+  },delay);
+}
+async function enableDriveBackup(){
+  updateDriveBackupStatus('Google Drive backup: waiting for authorization…');
+  try{
+    await requestDriveAccessToken('');
+    // Safety rule: the first Drive action is always UPLOAD of current local planner data.
+    meta.driveBackup={...(meta.driveBackup||{}),enabled:true};
+    persistPlannerLocal();
+    await uploadDriveBackup();
+    alert('Google Drive backup enabled. Your current planner has been backed up.');
+  }catch(e){
+    updateDriveBackupStatus('Google Drive backup: '+(e?.message||'connection failed'));
+    alert(e?.message||'Google Drive backup could not be enabled.');
+  }
+}
+async function manualDriveBackup(){
+  try{
+    if(!((driveAccessToken&&driveAccessTokenExpiry>Date.now())||restoreDriveSessionToken())){
+      await requestDriveAccessToken('');
+    }
+    meta.driveBackup={...(meta.driveBackup||{}),enabled:true};
+    persistPlannerLocal();
+    await uploadDriveBackup();
+    alert('Planner backed up to Google Drive.');
+  }catch(e){
+    alert(e?.message||'Google Drive backup failed.');
+  }
+}
+function resumeDriveBackupIfAuthorized(){
+  if(!meta.driveBackup?.enabled) return;
+  if(restoreDriveSessionToken()){
+    scheduleDriveBackup(800);
+  }else{
+    updateDriveBackupStatus('Google Drive backup paused · reconnect required');
+  }
+}
+
 function googleStatusText(){
   const cfg=meta.googleCalendar||{};
   if(!cfg.connected) return 'Google Calendar: not connected';
@@ -2368,17 +2593,17 @@ document.getElementById('rSave').onclick=()=>{
 // Backup / restore
 function downloadSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     const blob=new Blob([raw],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-google-calendar-sync-2026-10-18.json';
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-google-drive-autobackup-2026-10-18.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
 function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
     const p=JSON.parse(raw);
@@ -2477,7 +2702,7 @@ dayEl.addEventListener('touchstart',e=>{touchX=e.touches[0].clientX;touchY=e.tou
 dayEl.addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-touchX,dy=e.changedTouches[0].clientY-touchY;if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5){current.setDate(current.getDate()+(dx<0?1:-1));render();}},{passive:true});
 
 // Menu
-document.getElementById('menuBtn').onclick=()=>{updateGoogleCalendarStatus();document.getElementById('menuModal').classList.add('open');};
+document.getElementById('menuBtn').onclick=()=>{updateGoogleCalendarStatus();updateDriveBackupStatus();document.getElementById('menuModal').classList.add('open');};
 document.getElementById('menuClose').onclick=()=>document.getElementById('menuModal').classList.remove('open');
 document.getElementById('printWeekBtn').onclick=openPrintPreview;
 document.getElementById('backupBtn').onclick=()=>{exportBackup();document.getElementById('menuModal').classList.remove('open');};
@@ -2489,6 +2714,8 @@ document.getElementById('recurringBtn').onclick=()=>{document.getElementById('me
 document.getElementById('googleConnectBtn').onclick=()=>connectMumGoogleCalendar();
 document.getElementById('googleSyncBtn').onclick=()=>syncMumGoogleCalendar({interactive:true}).catch(()=>{});
 document.getElementById('googleDisconnectBtn').onclick=()=>disconnectMumGoogleCalendar();
+document.getElementById('driveBackupConnectBtn').onclick=()=>enableDriveBackup();
+document.getElementById('driveBackupNowBtn').onclick=()=>manualDriveBackup();
 document.getElementById('recClose').onclick=()=>document.getElementById('recurringModal').classList.remove('open');
 document.getElementById('recAdd').onclick=()=>openRecurringEditor(null);
 
@@ -2570,6 +2797,7 @@ setTimeout(()=>{
   },1600);
 },450);
 setTimeout(scheduleAutomaticGoogleSync,900);
+setTimeout(resumeDriveBackupIfAuthorized,1050);
 </script>
 </body>
 </html>
