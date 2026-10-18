@@ -1533,6 +1533,7 @@ function googleEventToAppointment(ev){
       subcategory:'general',
       colorKey:'coral',
       notes:noteParts.filter(Boolean).join('\n'),
+      googleNotes:noteParts.filter(Boolean).join('\n'),
       flag:false,
       status:'pending'
     }
@@ -1571,24 +1572,80 @@ async function fetchGoogleCalendarEvents(accessToken){
 }
 function applyGoogleCalendarEvents(result){
   const minKey=result.minKey,maxKey=result.maxKey;
+  const existing=new Map();
   Object.keys(data).forEach(key=>{
     if(key<minKey||key>maxKey) return;
-    const dd=dayData(key);
-    dd.appts=dd.appts.filter(a=>a.source!==GOOGLE_SYNC_SOURCE);
+    dayData(key).appts.forEach(a=>{
+      if(a.source===GOOGLE_SYNC_SOURCE&&a.googleEventId) existing.set(String(a.googleEventId),{key,appt:a});
+    });
   });
-  let imported=0;
+
+  const incomingIds=new Set();
+  let imported=0,updated=0;
   result.items.forEach(ev=>{
     const converted=googleEventToAppointment(ev);
     if(!converted) return;
     if(converted.key<minKey||converted.key>maxKey) return;
-    dayData(converted.key).appts.push(converted.appt);
-    imported++;
+    const id=String(converted.appt.googleEventId);
+    incomingIds.add(id);
+    const found=existing.get(id);
+    if(!found){
+      dayData(converted.key).appts.push(converted.appt);
+      imported++;
+      return;
+    }
+
+    const old=found.appt;
+    // Preserve planner-only information that Google Calendar does not own.
+    const preserved={
+      status:old.status||'pending',
+      flag:!!old.flag,
+      expenseLink:old.expenseLink||null,
+      colorKey:'coral',
+      category:'general',
+      subcategory:'general',
+      who:'mum'
+    };
+    // If the notes were never manually changed, keep them synced with Google.
+    const notesWereGoogleOwned=String(old.notes||'')===String(old.googleNotes||old.notes||'');
+    const next={...old,...converted.appt,...preserved};
+    next.googleNotes=converted.appt.googleNotes||'';
+    next.notes=notesWereGoogleOwned?next.googleNotes:String(old.notes||'');
+
+    if(found.key!==converted.key){
+      const oldDay=dayData(found.key);
+      oldDay.appts=oldDay.appts.filter(a=>a!==old);
+      dayData(converted.key).appts.push(next);
+    }else{
+      const dd=dayData(found.key);
+      const idx=dd.appts.indexOf(old);
+      if(idx>=0) dd.appts[idx]=next;
+    }
+    updated++;
   });
-  meta.googleCalendar={...(meta.googleCalendar||{}),connected:true,calendarId:GOOGLE_CALENDAR_ID,lastSync:new Date().toISOString(),imported};
+
+  // Remove only Google-imported appointments that disappeared/cancelled in the synced window.
+  let removed=0;
+  Object.keys(data).forEach(key=>{
+    if(key<minKey||key>maxKey) return;
+    const dd=dayData(key);
+    const before=dd.appts.length;
+    dd.appts=dd.appts.filter(a=>a.source!==GOOGLE_SYNC_SOURCE||!a.googleEventId||incomingIds.has(String(a.googleEventId)));
+    removed+=before-dd.appts.length;
+  });
+
+  meta.googleCalendar={
+    ...(meta.googleCalendar||{}),
+    connected:true,
+    calendarId:GOOGLE_CALENDAR_ID,
+    lastSync:new Date().toISOString(),
+    imported,updated,removed,
+    total:incomingIds.size
+  };
   save();
   render();
   updateGoogleCalendarStatus();
-  return imported;
+  return incomingIds.size;
 }
 async function syncMumGoogleCalendar({interactive=false}={}){
   if(googleSyncInProgress) return;
