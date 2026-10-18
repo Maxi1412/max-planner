@@ -502,14 +502,12 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
   <div class="menuList">
     <button id="printWeekBtn">Print / PDF this week</button>
     <button id="recurringBtn">Recurring items</button>
-    <button id="googleConnectBtn">Connect Mum Google Calendar</button>
-    <button id="googleSyncBtn">Sync Mum Google Calendar</button>
-    <button id="googleDisconnectBtn">Disconnect Google Calendar</button>
+    <button id="googleConnectBtn">Connect Google</button>
+    <button id="googleSyncBtn">Sync Google now</button>
+    <button id="googleDisconnectBtn">Disconnect Google</button>
     <div id="googleCalendarStatus" class="pwaMeta">Google Calendar: not connected</div>
-    <button id="driveBackupConnectBtn">Enable Google Drive backup</button>
-    <button id="driveBackupNowBtn">Back up to Google Drive now</button>
-    <button id="driveRestoreBtn">Restore planner from Google Drive</button>
     <div id="driveBackupStatus" class="pwaMeta">Google Drive backup: not enabled</div>
+    <button id="driveRestoreBtn">Restore planner from Google Drive</button>
     <button id="backupBtn">Export backup</button>
     <button id="restoreBtn">Restore backup</button>
     <button id="safetyBackupBtn">Download safety snapshot</button>
@@ -613,8 +611,8 @@ const SAFETY_BACKUP_KEY_V26='max-planner-safety-pre-note-display-performance-202
 const SAFETY_BACKUP_KEY_V27='max-planner-safety-pre-todo-backward-move-2026-10-16';
 const SAFETY_BACKUP_KEY_V28='max-planner-safety-pre-google-calendar-sync-2026-10-18';
 const SAFETY_BACKUP_KEY_V30='max-planner-safety-pre-google-drive-autobackup-2026-10-18';
-const VERSION=30;
-const APP_BUILD='PWA 1.15.1';
+const VERSION=31;
+const APP_BUILD='PWA 1.16.0';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -866,6 +864,7 @@ function repeatLabel(r){
 const GOOGLE_CALENDAR_CLIENT_ID='472362575652-33sufdi0inj2kljqrg81587vq7c15fhc.apps.googleusercontent.com';
 const GOOGLE_CALENDAR_SCOPE='https://www.googleapis.com/auth/calendar.readonly';
 const GOOGLE_DRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata';
+const GOOGLE_UNIFIED_SCOPE=GOOGLE_CALENDAR_SCOPE+' '+GOOGLE_DRIVE_SCOPE;
 const GOOGLE_SYNC_SOURCE='google-calendar-mum';
 const GOOGLE_TOKEN_SESSION_KEY='max-planner-google-calendar-token';
 const GOOGLE_DRIVE_TOKEN_SESSION_KEY='max-planner-google-drive-token';
@@ -875,6 +874,7 @@ let googleAccessToken='';
 let googleAccessTokenExpiry=0;
 let googleSyncInProgress=false;
 let driveTokenClient=null;
+let unifiedGoogleTokenClient=null;
 let driveAccessToken='';
 let driveAccessTokenExpiry=0;
 let driveBackupTimer=null;
@@ -1511,6 +1511,37 @@ function requestDriveAccessToken(promptMode=''){
     }catch(e){reject(e);}
   });
 }
+async function ensureUnifiedGoogleTokenClient(){
+  await loadGoogleIdentityScript();
+  if(unifiedGoogleTokenClient) return unifiedGoogleTokenClient;
+  unifiedGoogleTokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:GOOGLE_CALENDAR_CLIENT_ID,
+    scope:GOOGLE_UNIFIED_SCOPE,
+    callback:()=>{}
+  });
+  return unifiedGoogleTokenClient;
+}
+function requestUnifiedGoogleToken(promptMode='consent'){
+  return new Promise(async(resolve,reject)=>{
+    try{
+      const tc=await ensureUnifiedGoogleTokenClient();
+      tc.callback=(resp)=>{
+        if(resp?.error){reject(new Error(resp.error_description||resp.error));return;}
+        if(!resp?.access_token){reject(new Error('Google did not return an access token.'));return;}
+        const hasCalendar=google.accounts.oauth2.hasGrantedAllScopes(resp,GOOGLE_CALENDAR_SCOPE);
+        const hasDrive=google.accounts.oauth2.hasGrantedAllScopes(resp,GOOGLE_DRIVE_SCOPE);
+        if(!hasCalendar||!hasDrive){
+          reject(new Error('Calendar and Drive permissions are both required.'));
+          return;
+        }
+        persistGoogleSessionToken(resp.access_token,resp.expires_in);
+        persistDriveSessionToken(resp.access_token,resp.expires_in);
+        resolve(resp.access_token);
+      };
+      tc.requestAccessToken({prompt:promptMode});
+    }catch(e){reject(e);}
+  });
+}
 function buildDriveBackupPayload(){
   return {
     app:'Max Planner',
@@ -1995,6 +2026,68 @@ async function syncMumGoogleCalendar({interactive=false}={}){
     googleSyncInProgress=false;
   }
 }
+async function connectGoogleServices(){
+  updateGoogleCalendarStatus('Google: waiting for authorization…');
+  updateDriveBackupStatus('Google: waiting for authorization…');
+  try{
+    const token=await requestUnifiedGoogleToken('consent');
+    meta.driveBackup={...(meta.driveBackup||{}),enabled:true};
+    persistPlannerLocal();
+
+    const result=await fetchGoogleCalendarEvents(token);
+    const total=applyGoogleCalendarEvents(result);
+
+    await uploadDriveBackup();
+    updateGoogleCalendarStatus('Mum Google Calendar synced · '+total+' events');
+    updateDriveBackupStatus();
+    alert('Google connected. Mum’s calendar is synced and Max Planner is backed up to Google Drive.');
+  }catch(e){
+    const msg=String(e?.message||'Google connection failed.');
+    updateGoogleCalendarStatus('Google: '+msg);
+    updateDriveBackupStatus('Google: '+msg);
+    alert(msg);
+  }
+}
+async function syncGoogleServicesNow(){
+  try{
+    let token='';
+    const calOk=(googleAccessToken&&googleAccessTokenExpiry>Date.now())||restoreGoogleSessionToken();
+    const driveOk=(driveAccessToken&&driveAccessTokenExpiry>Date.now())||restoreDriveSessionToken();
+    if(calOk&&driveOk){
+      token=googleAccessToken||driveAccessToken;
+      // A unified token is persisted to both session slots by Connect Google.
+      if(googleAccessToken!==driveAccessToken) token=await requestUnifiedGoogleToken('');
+    }else{
+      token=await requestUnifiedGoogleToken('');
+    }
+    meta.driveBackup={...(meta.driveBackup||{}),enabled:true};
+    persistPlannerLocal();
+    const result=await fetchGoogleCalendarEvents(token);
+    const total=applyGoogleCalendarEvents(result);
+    await uploadDriveBackup();
+    updateGoogleCalendarStatus('Mum Google Calendar synced · '+total+' events');
+    updateDriveBackupStatus();
+  }catch(e){
+    alert(e?.message||'Google sync failed.');
+  }
+}
+function disconnectGoogleServices(){
+  const token=googleAccessToken||driveAccessToken;
+  persistGoogleSessionToken('',0);
+  persistDriveSessionToken('',0);
+  googleTokenClient=null;
+  driveTokenClient=null;
+  unifiedGoogleTokenClient=null;
+  if(token&&window.google?.accounts?.oauth2?.revoke){
+    try{google.accounts.oauth2.revoke(token,()=>{});}catch(e){}
+  }
+  meta.googleCalendar={...(meta.googleCalendar||{}),connected:false};
+  meta.driveBackup={...(meta.driveBackup||{}),enabled:false};
+  persistPlannerLocal();
+  updateGoogleCalendarStatus('Google Calendar: not connected');
+  updateDriveBackupStatus('Google Drive backup: not enabled');
+}
+
 async function connectMumGoogleCalendar(){
   updateGoogleCalendarStatus('Google Calendar: waiting for authorization…');
   try{
@@ -2751,11 +2844,9 @@ document.getElementById('safetyBackupBtn').onclick=downloadSafetyBackup;
 document.getElementById('restoreSafetyBtn').onclick=restoreSafetyBackup;
 document.getElementById('restoreFile').onchange=e=>{if(e.target.files?.[0])restoreBackup(e.target.files[0]);e.target.value='';};
 document.getElementById('recurringBtn').onclick=()=>{document.getElementById('menuModal').classList.remove('open');renderRecurringManager();document.getElementById('recurringModal').classList.add('open');};
-document.getElementById('googleConnectBtn').onclick=()=>connectMumGoogleCalendar();
-document.getElementById('googleSyncBtn').onclick=()=>syncMumGoogleCalendar({interactive:true}).catch(()=>{});
-document.getElementById('googleDisconnectBtn').onclick=()=>disconnectMumGoogleCalendar();
-document.getElementById('driveBackupConnectBtn').onclick=()=>enableDriveBackup();
-document.getElementById('driveBackupNowBtn').onclick=()=>manualDriveBackup();
+document.getElementById('googleConnectBtn').onclick=()=>connectGoogleServices();
+document.getElementById('googleSyncBtn').onclick=()=>syncGoogleServicesNow();
+document.getElementById('googleDisconnectBtn').onclick=()=>disconnectGoogleServices();
 document.getElementById('driveRestoreBtn').onclick=()=>restorePlannerFromDrive();
 document.getElementById('recClose').onclick=()=>document.getElementById('recurringModal').classList.remove('open');
 document.getElementById('recAdd').onclick=()=>openRecurringEditor(null);
