@@ -505,15 +505,12 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 <div id="googleAccountModal" class="overlay"><div class="sheet">
   <h3>Connect Mum Google Calendar</h3>
   <div class="actionList">
-    <button type="button" id="googleChooseExistingBtn">Choose existing Google account</button>
+    <button type="button" class="save" id="googleConnectMumDirectBtn">Connect Martina · martina.orihuela@gmail.com</button>
+    <button type="button" id="googleChooseExistingBtn">Choose a different Google account</button>
   </div>
-  <label>Mum's Gmail address</label>
-  <input id="googleManualEmail" type="email" inputmode="email" autocomplete="email" placeholder="mum@gmail.com">
-  <div class="colorHint">Enter Mum's email here. Her password will be entered securely on Google's own sign-in page.</div>
-  <div id="googleManualEmailError" class="formError">Enter a valid Gmail / Google account email.</div>
+  <div class="colorHint">Max Planner requests read-only Calendar access. Google handles the authorization securely.</div>
   <div class="row">
     <button type="button" class="cancel" id="googleAccountCancelBtn">Cancel</button>
-    <button type="button" class="save" id="googleUseEmailBtn">Continue with this email</button>
   </div>
 </div></div>
 
@@ -638,8 +635,8 @@ const SAFETY_BACKUP_KEY_V30='max-planner-safety-pre-google-drive-autobackup-2026
 const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-10-18';
 const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
-const VERSION=36;
-const APP_BUILD='PWA 1.18.1';
+const VERSION=37;
+const APP_BUILD='PWA 1.18.2';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -913,6 +910,7 @@ function repeatLabel(r){
   return 'Does not repeat';
 }
 const GOOGLE_CALENDAR_CLIENT_ID='472362575652-33sufdi0inj2kljqrg81587vq7c15fhc.apps.googleusercontent.com';
+const MUM_GOOGLE_EMAIL='martina.orihuela@gmail.com';
 const GOOGLE_DRIVE_CLIENT_ID='11523095308-dj5t16l7bumo2rki9b7kstv85q9ff18j.apps.googleusercontent.com';
 const GOOGLE_CALENDAR_SCOPE='https://www.googleapis.com/auth/calendar.readonly';
 const GOOGLE_DRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata';
@@ -1826,7 +1824,8 @@ function googleStatusText(){
   if(cfg.lastSync){
     const d=new Date(cfg.lastSync);
     const n=Array.isArray(cfg.calendars)?cfg.calendars.length:0;
-    return 'Mum Google Calendar · '+n+' calendar'+(n===1?'':'s')+' · Last sync '+d.toLocaleString();
+    const email=cfg.connectedEmail?(' · '+cfg.connectedEmail):'';
+    return '✓ Mum Google Calendar connected'+email+' · '+n+' calendar'+(n===1?'':'s')+' · Last sync '+d.toLocaleString();
   }
   return 'Mum Google Calendar connected';
 }
@@ -2171,17 +2170,32 @@ async function syncMumGoogleCalendar({interactive=false}={}){
     googleSyncInProgress=false;
   }
 }
-async function connectMumGoogleCalendar(loginHint=''){
+async function connectMumGoogleCalendar(loginHint=MUM_GOOGLE_EMAIL){
   updateGoogleCalendarStatus(loginHint
-    ? 'Google Calendar: opening Google sign-in for '+loginHint+'…'
-    : 'Google Calendar: choose Mum’s account…');
+    ? 'Google Calendar: connecting '+loginHint+'…'
+    : 'Google Calendar: choose account…');
   try{
     const token=await requestGoogleCalendarToken(loginHint?'consent':'select_account consent',loginHint);
     const result=await fetchGoogleCalendarEvents(token);
+
+    if(loginHint){
+      const primary=(result.calendars||[]).find(cal=>cal.primary);
+      const primaryId=String(primary?.id||'').toLowerCase();
+      if(primaryId && primaryId!==String(loginHint).toLowerCase()){
+        persistGoogleSessionToken('',0);
+        throw new Error('Google connected a different account. Please choose Martina Scheurer / '+MUM_GOOGLE_EMAIL+'.');
+      }
+    }
+
     const imported=applyGoogleCalendarEvents(result);
-    meta.googleCalendar={...(meta.googleCalendar||{}),connectedEmail:loginHint||meta.googleCalendar?.connectedEmail||''};
+    meta.googleCalendar={
+      ...(meta.googleCalendar||{}),
+      connected:true,
+      connectedEmail:loginHint||meta.googleCalendar?.connectedEmail||'',
+      lastConnectedAt:new Date().toISOString()
+    };
     save();
-    updateGoogleCalendarStatus('Mum Google Calendar connected · '+imported+' events synced');
+    updateGoogleCalendarStatus('✓ Mum Google Calendar connected · '+imported+' events synced');
     alert('Mum Google Calendar connected. '+imported+' events synced.');
   }catch(e){
     updateGoogleCalendarStatus('Google Calendar: '+(e?.message||'connection failed'));
@@ -2190,12 +2204,7 @@ async function connectMumGoogleCalendar(loginHint=''){
 }
 function openMumGoogleAccountChooser(){
   document.getElementById('menuModal').classList.remove('open');
-  document.getElementById('googleManualEmail').value=meta.googleCalendar?.connectedEmail||'';
-  document.getElementById('googleManualEmailError').classList.remove('show');
   document.getElementById('googleAccountModal').classList.add('open');
-}
-function validGoogleEmail(value){
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value||'').trim());
 }
 function disconnectMumGoogleCalendar(){
   const token=googleAccessToken;
@@ -2943,18 +2952,13 @@ document.getElementById('restoreFile').onchange=e=>{if(e.target.files?.[0])resto
 document.getElementById('recurringBtn').onclick=()=>{document.getElementById('menuModal').classList.remove('open');renderRecurringManager();document.getElementById('recurringModal').classList.add('open');};
 document.getElementById('googleCalendarConnectBtn').onclick=openMumGoogleAccountChooser;
 document.getElementById('googleAccountCancelBtn').onclick=()=>document.getElementById('googleAccountModal').classList.remove('open');
+document.getElementById('googleConnectMumDirectBtn').onclick=()=>{
+  document.getElementById('googleAccountModal').classList.remove('open');
+  connectMumGoogleCalendar(MUM_GOOGLE_EMAIL);
+};
 document.getElementById('googleChooseExistingBtn').onclick=()=>{
   document.getElementById('googleAccountModal').classList.remove('open');
   connectMumGoogleCalendar('');
-};
-document.getElementById('googleUseEmailBtn').onclick=()=>{
-  const input=document.getElementById('googleManualEmail');
-  const email=String(input.value||'').trim();
-  const err=document.getElementById('googleManualEmailError');
-  if(!validGoogleEmail(email)){err.classList.add('show');input.focus();return;}
-  err.classList.remove('show');
-  document.getElementById('googleAccountModal').classList.remove('open');
-  connectMumGoogleCalendar(email);
 };
 document.getElementById('googleCalendarSyncBtn').onclick=()=>syncMumGoogleCalendar({interactive:true}).catch(()=>{});
 document.getElementById('googleCalendarDisconnectBtn').onclick=()=>disconnectMumGoogleCalendar();
