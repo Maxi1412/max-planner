@@ -501,6 +501,22 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
   </div>
 </div></div>
 
+<!-- Mum Google Calendar account chooser -->
+<div id="googleAccountModal" class="overlay"><div class="sheet">
+  <h3>Connect Mum Google Calendar</h3>
+  <div class="actionList">
+    <button type="button" id="googleChooseExistingBtn">Choose existing Google account</button>
+  </div>
+  <label>Mum's Gmail address</label>
+  <input id="googleManualEmail" type="email" inputmode="email" autocomplete="email" placeholder="mum@gmail.com">
+  <div class="colorHint">Enter Mum's email here. Her password will be entered securely on Google's own sign-in page.</div>
+  <div id="googleManualEmailError" class="formError">Enter a valid Gmail / Google account email.</div>
+  <div class="row">
+    <button type="button" class="cancel" id="googleAccountCancelBtn">Cancel</button>
+    <button type="button" class="save" id="googleUseEmailBtn">Continue with this email</button>
+  </div>
+</div></div>
+
 <!-- Main menu -->
 <div id="menuModal" class="overlay"><div class="sheet">
   <h3>Planner</h3>
@@ -620,8 +636,9 @@ const SAFETY_BACKUP_KEY_V27='max-planner-safety-pre-todo-backward-move-2026-10-1
 const SAFETY_BACKUP_KEY_V28='max-planner-safety-pre-google-calendar-sync-2026-10-18';
 const SAFETY_BACKUP_KEY_V30='max-planner-safety-pre-google-drive-autobackup-2026-10-18';
 const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-10-18';
-const VERSION=34;
-const APP_BUILD='PWA 1.17.2';
+const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
+const VERSION=35;
+const APP_BUILD='PWA 1.17.3';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -741,6 +758,14 @@ try{
     localStorage.setItem(SAFETY_BACKUP_KEY_V32,JSON.stringify({
       app:'Max Planner',
       snapshot:'Pre-separate-Google-Drive-client safety backup',
+      createdAt:new Date().toISOString(),
+      data,recurring,meta
+    }));
+  }
+  if(!localStorage.getItem(SAFETY_BACKUP_KEY_V35)){
+    localStorage.setItem(SAFETY_BACKUP_KEY_V35,JSON.stringify({
+      app:'Max Planner',
+      snapshot:'Pre-manual-Mum-Google-login safety backup',
       createdAt:new Date().toISOString(),
       data,recurring,meta
     }));
@@ -1802,7 +1827,7 @@ async function ensureGoogleTokenClient(){
   });
   return googleTokenClient;
 }
-function requestGoogleCalendarToken(promptMode='select_account consent'){
+function requestGoogleCalendarToken(promptMode='select_account consent',loginHint=''){
   return new Promise(async(resolve,reject)=>{
     try{
       const tc=await ensureGoogleTokenClient();
@@ -1812,7 +1837,9 @@ function requestGoogleCalendarToken(promptMode='select_account consent'){
         persistGoogleSessionToken(resp.access_token,resp.expires_in);
         resolve(resp.access_token);
       };
-      tc.requestAccessToken({prompt:promptMode});
+      const cfg={prompt:promptMode};
+      if(loginHint) cfg.login_hint=loginHint;
+      tc.requestAccessToken(cfg);
     }catch(e){reject(e);}
   });
 }
@@ -2055,17 +2082,31 @@ async function syncMumGoogleCalendar({interactive=false}={}){
     googleSyncInProgress=false;
   }
 }
-async function connectMumGoogleCalendar(){
-  updateGoogleCalendarStatus('Google Calendar: choose Mum’s account / Use another account…');
+async function connectMumGoogleCalendar(loginHint=''){
+  updateGoogleCalendarStatus(loginHint
+    ? 'Google Calendar: signing in as '+loginHint+'…'
+    : 'Google Calendar: choose Mum’s account…');
   try{
-    const token=await requestGoogleCalendarToken('select_account consent');
+    const token=await requestGoogleCalendarToken(loginHint?'consent':'select_account consent',loginHint);
     const result=await fetchGoogleCalendarEvents(token);
     const imported=applyGoogleCalendarEvents(result);
+    meta.googleCalendar={...(meta.googleCalendar||{}),connectedEmail:loginHint||meta.googleCalendar?.connectedEmail||''};
+    save();
+    updateGoogleCalendarStatus('Mum Google Calendar connected · '+imported+' events synced');
     alert('Mum Google Calendar connected. '+imported+' events synced.');
   }catch(e){
     updateGoogleCalendarStatus('Google Calendar: '+(e?.message||'connection failed'));
     alert(e?.message||'Google Calendar connection failed.');
   }
+}
+function openMumGoogleAccountChooser(){
+  document.getElementById('menuModal').classList.remove('open');
+  document.getElementById('googleManualEmail').value=meta.googleCalendar?.connectedEmail||'';
+  document.getElementById('googleManualEmailError').classList.remove('show');
+  document.getElementById('googleAccountModal').classList.add('open');
+}
+function validGoogleEmail(value){
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value||'').trim());
 }
 function disconnectMumGoogleCalendar(){
   const token=googleAccessToken;
@@ -2693,17 +2734,17 @@ document.getElementById('rSave').onclick=()=>{
 // Backup / restore
 function downloadSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V35)||localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     const blob=new Blob([raw],{type:'application/json'});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-separate-drive-client-2026-10-18.json';
+    const a=document.createElement('a');a.href=url;a.download='max-planner-SAFETY-pre-manual-mum-google-login-2026-10-18.json';
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('Could not download the safety snapshot.');}
 }
 function restoreSafetyBackup(){
   try{
-    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
+    const raw=localStorage.getItem(SAFETY_BACKUP_KEY_V35)||localStorage.getItem(SAFETY_BACKUP_KEY_V32)||localStorage.getItem(SAFETY_BACKUP_KEY_V30)||localStorage.getItem(SAFETY_BACKUP_KEY_V28)||localStorage.getItem(SAFETY_BACKUP_KEY_V27)||localStorage.getItem(SAFETY_BACKUP_KEY_V26)||localStorage.getItem(SAFETY_BACKUP_KEY_V25)||localStorage.getItem(SAFETY_BACKUP_KEY_V24)||localStorage.getItem(SAFETY_BACKUP_KEY_V22)||localStorage.getItem(SAFETY_BACKUP_KEY_V21)||localStorage.getItem(SAFETY_BACKUP_KEY_V20)||localStorage.getItem(SAFETY_BACKUP_KEY_V19)||localStorage.getItem(SAFETY_BACKUP_KEY_V18)||localStorage.getItem(SAFETY_BACKUP_KEY);
     if(!raw){alert('No safety snapshot is available on this device.');return;}
     if(!confirm('Restore the latest safety snapshot? Current planner data will be replaced by that snapshot.')) return;
     const p=JSON.parse(raw);
@@ -2811,7 +2852,21 @@ document.getElementById('safetyBackupBtn').onclick=downloadSafetyBackup;
 document.getElementById('restoreSafetyBtn').onclick=restoreSafetyBackup;
 document.getElementById('restoreFile').onchange=e=>{if(e.target.files?.[0])restoreBackup(e.target.files[0]);e.target.value='';};
 document.getElementById('recurringBtn').onclick=()=>{document.getElementById('menuModal').classList.remove('open');renderRecurringManager();document.getElementById('recurringModal').classList.add('open');};
-document.getElementById('googleCalendarConnectBtn').onclick=()=>connectMumGoogleCalendar();
+document.getElementById('googleCalendarConnectBtn').onclick=openMumGoogleAccountChooser;
+document.getElementById('googleAccountCancelBtn').onclick=()=>document.getElementById('googleAccountModal').classList.remove('open');
+document.getElementById('googleChooseExistingBtn').onclick=()=>{
+  document.getElementById('googleAccountModal').classList.remove('open');
+  connectMumGoogleCalendar('');
+};
+document.getElementById('googleUseEmailBtn').onclick=()=>{
+  const input=document.getElementById('googleManualEmail');
+  const email=String(input.value||'').trim();
+  const err=document.getElementById('googleManualEmailError');
+  if(!validGoogleEmail(email)){err.classList.add('show');input.focus();return;}
+  err.classList.remove('show');
+  document.getElementById('googleAccountModal').classList.remove('open');
+  connectMumGoogleCalendar(email);
+};
 document.getElementById('googleCalendarSyncBtn').onclick=()=>syncMumGoogleCalendar({interactive:true}).catch(()=>{});
 document.getElementById('googleCalendarDisconnectBtn').onclick=()=>disconnectMumGoogleCalendar();
 document.getElementById('driveBackupConnectBtn').onclick=()=>enableDriveBackup();
@@ -2822,7 +2877,7 @@ document.getElementById('recClose').onclick=()=>document.getElementById('recurri
 document.getElementById('recAdd').onclick=()=>openRecurringEditor(null);
 
 // Close modal when tapping backdrop
-['apptModal','actionModal','textModal','menuModal','recurringModal','recEditModal'].forEach(id=>document.getElementById(id).addEventListener('click',e=>{
+['apptModal','actionModal','textModal','menuModal','googleAccountModal','recurringModal','recEditModal'].forEach(id=>document.getElementById(id).addEventListener('click',e=>{
   if(e.target.id===id){
     if(id==='apptModal'){pendingReschedule=null;clearApptError();}
     e.currentTarget.classList.remove('open');
