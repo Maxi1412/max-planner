@@ -639,7 +639,7 @@ const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-1
 const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
 const VERSION=36;
-const APP_BUILD='PWA 1.18.0';
+const APP_BUILD='PWA 1.18.1';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -1874,23 +1874,61 @@ async function ensureGoogleTokenClient(){
   googleTokenClient=google.accounts.oauth2.initTokenClient({
     client_id:GOOGLE_CALENDAR_CLIENT_ID,
     scope:GOOGLE_CALENDAR_SCOPE,
-    callback:()=>{}
+    callback:()=>{},
+    error_callback:()=>{}
   });
   return googleTokenClient;
 }
 function requestGoogleCalendarToken(promptMode='select_account consent',loginHint=''){
   return new Promise(async(resolve,reject)=>{
     try{
-      const tc=await ensureGoogleTokenClient();
-      tc.callback=(resp)=>{
-        if(resp?.error){reject(new Error(resp.error_description||resp.error));return;}
-        if(!resp?.access_token){reject(new Error('Google did not return an access token.'));return;}
+      await loadGoogleIdentityScript();
+      let settled=false;
+      const finishReject=(message)=>{
+        if(settled) return;
+        settled=true;
+        reject(new Error(message));
+      };
+      const finishResolve=(resp)=>{
+        if(settled) return;
+        if(resp?.error){finishReject(resp.error_description||resp.error);return;}
+        if(!resp?.access_token){finishReject('Google did not return an access token.');return;}
+        settled=true;
         persistGoogleSessionToken(resp.access_token,resp.expires_in);
         resolve(resp.access_token);
       };
-      const cfg={prompt:promptMode};
-      if(loginHint) cfg.login_hint=loginHint;
-      tc.requestAccessToken(cfg);
+
+      // Create a fresh token client for each authorization attempt.
+      // On Android/PWA this is more reliable than mutating a previously-created client,
+      // especially when login_hint is used for an account that is not already signed in.
+      const config={
+        client_id:GOOGLE_CALENDAR_CLIENT_ID,
+        scope:GOOGLE_CALENDAR_SCOPE,
+        include_granted_scopes:true,
+        prompt:promptMode,
+        callback:finishResolve,
+        error_callback:(err)=>{
+          const type=String(err?.type||'');
+          if(type==='popup_failed_to_open'){
+            finishReject('Google sign-in could not open. Please allow pop-ups for Max Planner and try again.');
+          }else if(type==='popup_closed'){
+            finishReject('Google sign-in was closed before authorization finished.');
+          }else{
+            finishReject('Google sign-in could not start. Please try again.');
+          }
+        }
+      };
+      if(loginHint) config.login_hint=loginHint;
+
+      googleTokenClient=google.accounts.oauth2.initTokenClient(config);
+      googleTokenClient.requestAccessToken();
+
+      // Avoid leaving Max Planner permanently waiting if Android opens a blank/failed OAuth window.
+      setTimeout(()=>{
+        if(!settled){
+          finishReject('Google sign-in did not complete. If Google reports that the maximum number of accounts is signed in, that browser account limit must be cleared before another Google account can be added.');
+        }
+      },30000);
     }catch(e){reject(e);}
   });
 }
@@ -2135,7 +2173,7 @@ async function syncMumGoogleCalendar({interactive=false}={}){
 }
 async function connectMumGoogleCalendar(loginHint=''){
   updateGoogleCalendarStatus(loginHint
-    ? 'Google Calendar: signing in as '+loginHint+'…'
+    ? 'Google Calendar: opening Google sign-in for '+loginHint+'…'
     : 'Google Calendar: choose Mum’s account…');
   try{
     const token=await requestGoogleCalendarToken(loginHint?'consent':'select_account consent',loginHint);
