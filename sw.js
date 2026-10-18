@@ -1,4 +1,4 @@
-const CACHE_NAME="max-planner-pwa-1.17.2";
+const CACHE_NAME="max-planner-pwa-1.17.3";
 const APP_SHELL=["./","./index.html","./app.webmanifest","./icon-192.png","./icon-512.png"];
 
 self.addEventListener("install",event=>{
