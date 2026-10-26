@@ -1,7 +1,7 @@
 /* Encrypted Mum Google Calendar feed reader. Never loads plain calendar data from GitHub. */
 (() => {
   'use strict';
-  const KEY_STORAGE = 'max-planner-mum-feed-secret-v1';
+  const KEY_STORAGE = 'mum-private-feed-key-v1';
   const FEED_URL = 'https://raw.githubusercontent.com/Maxi1412/max-planner/main/mum-calendar.enc.json';
   const EMAIL = 'martina.orihuela@gmail.com';
   let busy = false, lastFingerprint = '';
