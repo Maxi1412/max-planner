@@ -177,7 +177,7 @@ test('service worker leaves Google requests and other PWAs alone, and removes on
   for(const request of [new Request('https://www.googleapis.com/calendar/v3/events'),new Request('https://example.test/expense-vault/'),new Request('https://example.test/max-planner/index.html',{headers:{Authorization:'Bearer test'}})]){
     let intercepted=false;handlers.fetch({request,respondWith:()=>{intercepted=true;}});assert.equal(intercepted,false);
   }
-  let pending;handlers.activate({waitUntil:value=>pending=value});await pending;assert.deepEqual(deleted,['max-planner-pwa-1.19.2']);
+  let pending;handlers.activate({waitUntil:value=>pending=value});await pending;assert.deepEqual(deleted,['max-planner-pwa-1.19.2','max-planner-pwa-1.20.0']);
 });
 test('service-worker cache failure does not block a working network response',async()=>{
   for(const cacheFailure of ['open','put']){
