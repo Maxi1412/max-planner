@@ -1,0 +1,25 @@
+name: Max Planner regression QA
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify JavaScript syntax
+        run: |
+          node --check planner-core.js
+          node --check planner-safety.js
+          node --check mum-private-calendar.js
+          node --check scripts/build-mum-calendar-feed.cjs
+      - name: Run all preservation regression tests
+        run: node --test tests/regressions.test.cjs

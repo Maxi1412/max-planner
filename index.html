@@ -641,7 +641,7 @@ const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
 const SAFETY_BACKUP_KEY_V39='max-planner-safety-pre-roster-oct26-nov1-2026';
 const VERSION=45;
-const APP_BUILD='PWA 1.20.1';
+const APP_BUILD='PWA 1.20.2';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -2032,6 +2032,58 @@ async function fetchGoogleCalendarEvents(accessToken){
     maxKey:localIsoDateFromDate(max)
   };
 }
+// Separate encrypted-feed sync. Existing OAuth and Drive sync paths are unchanged.
+window.MaxPlannerPrivateMumFeed = Object.freeze({
+  apply(result, fingerprint){
+    if(meta.mumPrivateFeed?.fingerprint===fingerprint) return {imported:0,linked:0};
+    if(!result || !Array.isArray(result.items) ||
+       result.calendars?.length!==1 ||
+       result.calendars[0]?.id!==MUM_GOOGLE_EMAIL ||
+       !/^\d{4}-\d{2}-\d{2}$/.test(result.minKey||'') ||
+       !/^\d{4}-\d{2}-\d{2}$/.test(result.maxKey||''))
+      throw new Error('Unexpected private Google Calendar feed.');
+    // Work on a copy, preserving every original item until merge is validated.
+    const pending=JSON.parse(JSON.stringify(data));
+    let linked=0;
+    const linkedByKey=new Map();
+    for(const ev of result.items){
+      if(!ev || ev.status==='cancelled') continue;
+      const conversion=googleEventToAppointment(ev);
+      if(!conversion) continue;
+      const day=pending[conversion.key];
+      if(!day || !Array.isArray(day.appts)) continue;
+      const normalized=t=>String(t||'').trim().toLocaleLowerCase();
+      const matches=day.appts.filter(appt=>
+        appt.who==='mum' && !appt.googleEventId && !appt.googleEventKey &&
+        normalized(appt.title)===normalized(conversion.appt.title) &&
+        String(appt.start||'')===String(conversion.appt.start||''));
+      // Link only unambiguous exact existing records. Never delete other copies.
+      if(matches.length!==1) continue;
+      const old=matches[0];
+      if(old.source) old.googleLinkedPreviousSource=old.source;
+      old.source='google-calendar-mum';
+      old.googleEventId=conversion.appt.googleEventId;
+      old.googleEventKey=conversion.appt.googleEventKey;
+      old.googleCalendarId=conversion.appt.googleCalendarId;
+      old.googleLocalOverrides={...(old.googleLocalOverrides||{}),notes:!!old.notes};
+      linkedByKey.set(conversion.appt.googleEventKey,old.id);
+      linked++;
+    }
+    const merged=PlannerCore.mergeGoogleCalendar(pending,result,ev=>{
+      const conversion=googleEventToAppointment(ev);
+      if(conversion&&linkedByKey.has(conversion.appt.googleEventKey))
+        conversion.appt.id=linkedByKey.get(conversion.appt.googleEventKey);
+      return conversion;
+    });
+    data=merged.data;
+    meta.mumPrivateFeed={...(meta.mumPrivateFeed||{}),fingerprint,
+      lastSync:new Date().toISOString(),imported:merged.imported,
+      linked,updated:merged.updated,missing:merged.missing,total:merged.total};
+    if(!save()) throw new Error('Private calendar merged in memory but device save failed. Export a recovery backup.');
+    render();
+    return {imported:merged.imported,linked,updated:merged.updated};
+  }
+});
 function applyGoogleCalendarEvents(result){
   const merged=PlannerCore.mergeGoogleCalendar(data,result,googleEventToAppointment);
   data=merged.data;
@@ -3013,5 +3065,6 @@ setTimeout(scheduleAutomaticGoogleSync,900);
 setTimeout(resumeDriveBackupIfAuthorized,1050);
 runWhenIdle(()=>prepareDriveSignIn(),1600);
 </script>
+<script src="./mum-private-calendar.js"></script>
 </body>
 </html>
