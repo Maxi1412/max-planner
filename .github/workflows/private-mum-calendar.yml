@@ -33,8 +33,8 @@ jobs:
 
       - name: Read and encrypt shared calendar (never commit plaintext)
         env:
-          GOOGLE_ACCESS_TOKEN: \${{ steps.auth.outputs.access_token }}
-          MUM_CALENDAR_FEED_KEY: \${{ secrets.MUM_CALENDAR_FEED_KEY }}
+          GOOGLE_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          MUM_CALENDAR_FEED_KEY: ${{ secrets.MUM_CALENDAR_FEED_KEY }}
         run: node scripts/build-mum-calendar-feed.cjs
 
       - name: Publish encrypted bytes only when events change
