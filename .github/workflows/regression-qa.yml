@@ -20,6 +20,7 @@ jobs:
           node --check planner-core.js
           node --check planner-safety.js
           node --check mum-private-calendar.js
+          node --check mum-samsung-local-import.js
           node --check scripts/build-mum-calendar-feed.cjs
       - name: Run all preservation regression tests
         run: node --test tests/regressions.test.cjs

@@ -257,3 +257,58 @@ test('private feed forwards stable fingerprint for idempotent refresh after rest
   const reader=fs.readFileSync(path.join(root,'mum-private-calendar.js'),'utf8');
   assert.ok(reader.includes('MaxPlannerPrivateMumFeed.apply(result, encrypted.fingerprint)'));
 });
+
+test('local Samsung rescue import preserves existing Mum edits, Google appointments, notes and shifts',async()=>{
+  const env=await app();
+  const original={
+    data:{
+      '2026-10-27':{appts:[
+        {id:'manual-one',who:'mum',title:'Existing appointment',start:'13:00',end:'14:00',notes:'Keep my manual notes',status:'completed',colorKey:'coral'},
+        {id:'manual-time',who:'mum',title:'Time corrected locally',start:'09:00',end:'10:00',notes:'Time was edited on phone'}
+      ],todos:[{id:'todo',text:'Keep this task'}],noteItems:[{id:'note',text:'Keep this note'}]},
+      '2026-10-28':{appts:[{id:'shift',who:'work',title:'Work shift',start:'15:00',end:'23:00'}],todos:[],noteItems:[]}
+    },
+    recurring:[{id:'keep-recurring',who:'work',title:'Work repeats'}],
+    meta:{driveBackup:{enabled:false},googleCalendar:{connected:false},customSetting:'keep'}
+  };
+  env.api.setState(json(original));
+  const pack={
+    format:'max-planner-mum-samsung-import-v1',
+    events:[
+      {icsUidHash:'aaaaaaaaaaaaaaaaaaaaaaaa',date:'2026-10-27',start:'13:00',end:'14:00',title:'Existing appointment',notes:'',location:'',allDay:false},
+      {icsUidHash:'bbbbbbbbbbbbbbbbbbbbbbbb',date:'2026-10-27',start:'10:00',end:'11:00',title:'Time corrected locally',notes:'',location:'',allDay:false},
+      {icsUidHash:'cccccccccccccccccccccccc',date:'2026-10-28',start:'11:30',end:'12:30',title:'New Samsung Mum appointment',notes:'Local Samsung description',location:'Clinic',allDay:false}
+    ]
+  };
+  const first=env.context.MaxPlannerMumSamsungImport.inspect(pack);
+  assert.equal(first.total,3);
+  assert.equal(first.already,1);
+  assert.equal(first.timeConflict,1);
+  assert.equal(first.eligible.length,1);
+  const result=env.context.MaxPlannerMumSamsungImport.apply(pack);
+  assert.equal(result.imported,1);
+  let state=json(env.api.getState());
+  assert.equal(state.data['2026-10-27'].appts.length,2);
+  assert.deepEqual(state.data['2026-10-27'].appts[0],original.data['2026-10-27'].appts[0]);
+  assert.deepEqual(state.data['2026-10-27'].appts[1],original.data['2026-10-27'].appts[1]);
+  const added=state.data['2026-10-28'].appts.find(e=>e.who==='mum');
+  assert.ok(added);
+  assert.equal(added.title,'New Samsung Mum appointment');
+  assert.equal(added.colorKey,'coral');
+  assert.match(added.notes,/Local Samsung description/);
+  assert.equal(state.data['2026-10-28'].appts[0].id,'shift');
+  assert.deepEqual(state.data['2026-10-27'].todos,original.data['2026-10-27'].todos);
+  assert.deepEqual(state.data['2026-10-27'].noteItems,original.data['2026-10-27'].noteItems);
+  assert.deepEqual(state.recurring,original.recurring);
+  assert.equal(state.meta.customSetting,'keep');
+  const repeated=env.context.MaxPlannerMumSamsungImport.apply(pack);
+  assert.equal(repeated.imported,0);
+  state=json(env.api.getState());
+  assert.equal(state.data['2026-10-28'].appts.filter(a=>a.who==='mum').length,1);
+});
+test('invalid Samsung rescue file is rejected before altering appointments',async()=>{
+  const env=await app();
+  const initial=json(env.api.getState());
+  assert.throws(()=>env.context.MaxPlannerMumSamsungImport.apply({format:'unknown',events:[]}),/not a valid/);
+  assert.deepEqual(json(env.api.getState()),initial);
+});
