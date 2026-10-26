@@ -37,7 +37,7 @@
         calendars:[{id:EMAIL, summary:EMAIL}],
         items:payload.items.map(ev => ({...ev, _calendarId:EMAIL, _calendarSummary:EMAIL}))
       };
-      const summary = window.MaxPlannerPrivateMumFeed.apply(result);
+      const summary = window.MaxPlannerPrivateMumFeed.apply(result, encrypted.fingerprint);
       lastFingerprint = encrypted.fingerprint;
       status('Private Mum sync active · ' + new Date().toLocaleString() +
              ' · ' + summary.imported + ' new · ' + summary.linked + ' existing linked');

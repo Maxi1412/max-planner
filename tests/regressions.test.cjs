@@ -252,3 +252,8 @@ test('encrypted Mum feed links an existing manual appointment and preserves priv
   state=json(env.api.getState());
   assert.equal(state.data['2026-10-26'].appts.length,1);
 });
+
+test('private feed forwards stable fingerprint for idempotent refresh after restart',()=>{
+  const reader=fs.readFileSync(path.join(root,'mum-private-calendar.js'),'utf8');
+  assert.ok(reader.includes('MaxPlannerPrivateMumFeed.apply(result, encrypted.fingerprint)'));
+});
