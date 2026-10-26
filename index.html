@@ -641,7 +641,7 @@ const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
 const SAFETY_BACKUP_KEY_V39='max-planner-safety-pre-roster-oct26-nov1-2026';
 const VERSION=45;
-const APP_BUILD='PWA 1.20.2';
+const APP_BUILD='PWA 1.20.3';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -2084,6 +2084,85 @@ window.MaxPlannerPrivateMumFeed = Object.freeze({
     return {imported:merged.imported,linked,updated:merged.updated};
   }
 });
+// One-time local Samsung import: no ICS content or appointment details are sent to GitHub.
+window.MaxPlannerMumSamsungImport=Object.freeze((()=>{
+  const FORMAT='max-planner-mum-samsung-import-v1';
+  const dateRe=/^\d{4}-\d{2}-\d{2}$/;
+  const timeRe=/^(?:[01]\d|2[0-3]):[0-5]\d$/;
+  const normalize=s=>String(s||'').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu,' ').trim().replace(/\s+/g,' ');
+  function validate(pack){
+    if(!pack||pack.format!==FORMAT||!Array.isArray(pack.events)||
+       pack.events.length>5000||pack.events.length<1)
+      throw new Error('This is not a valid Max Planner Mum Samsung import file.');
+    for(const event of pack.events){
+      if(!event||!dateRe.test(event.date||'')||
+         !timeRe.test(event.start||'')||!timeRe.test(event.end||'')||
+         !/^[0-9a-f]{24}$/.test(event.icsUidHash||'')||
+         typeof event.title!=='string'||event.title.length>500||
+         typeof event.notes!=='string'||event.notes.length>20000||
+         typeof event.location!=='string'||event.location.length>2000)
+        throw new Error('The Samsung import file contains an invalid appointment. Nothing was changed.');
+    }
+  }
+  function inspect(pack){
+    validate(pack);
+    const eligible=[],seen=new Set();
+    let already=0,timeConflict=0,duplicateFile=0;
+    for(const ev of pack.events){
+      const identity=ev.icsUidHash+'|'+ev.date+'|'+ev.start;
+      if(seen.has(identity)){duplicateFile++;continue;}
+      seen.add(identity);
+      const existing=(data[ev.date]?.appts||[]).filter(a=>a.who==='mum');
+      if(existing.some(a=>a.samsungIcsUidHash===ev.icsUidHash &&
+        a.samsungIcsOccurrenceDate===ev.date)){already++;continue;}
+      const title=normalize(ev.title);
+      const same=existing.filter(a=>normalize(a.title)===title);
+      if(same.some(a=>String(a.start||a.time||'').padStart(5,'0')===ev.start)){
+        already++;continue;
+      }
+      if(same.length){timeConflict++;continue;} // Never overwrite a local time correction.
+      eligible.push(ev);
+    }
+    return {eligible,already,timeConflict,duplicateFile,total:pack.events.length};
+  }
+  function apply(pack){
+    const summary=inspect(pack);
+    if(!summary.eligible.length)return {...summary,imported:0};
+    const oldData=data,oldMeta=meta;
+    const pending=JSON.parse(JSON.stringify(data));
+    for(const event of summary.eligible){
+      const day=pending[event.date]||(pending[event.date]={appts:[],todos:[],noteItems:[]});
+      if(!Array.isArray(day.appts))day.appts=[];
+      const notes=[event.allDay?'All-day Samsung Calendar event':'',
+        event.location?'Location: '+event.location:'',
+        event.notes].filter(Boolean).join('\n');
+      day.appts.push({
+        id:'samsung-local-'+event.icsUidHash+'-'+event.date.replace(/-/g,''),
+        source:'samsung-ics-mum-2026-10-26',
+        samsungIcsUidHash:event.icsUidHash,
+        samsungIcsOccurrenceDate:event.date,
+        who:'mum',title:event.title,time:event.start,
+        start:event.start,end:event.end,
+        category:'general',subcategory:'general',colorKey:'coral',
+        notes,flag:false,status:'pending'
+      });
+    }
+    data=pending;
+    meta={...meta,mumSamsungLocalImport:{
+      imported:summary.eligible.length,already:summary.already,
+      timeConflict:summary.timeConflict,importedAt:new Date().toISOString(),
+      through:'2031-12-31',source:'private-local-pack'
+    }};
+    let saved=false;
+    try{saved=save();}catch(error){data=oldData;meta=oldMeta;throw error;}
+    if(!saved){data=oldData;meta=oldMeta;throw new Error('Phone storage could not save the import. Existing appointments were not replaced.');}
+    render();
+    return {...summary,imported:summary.eligible.length};
+  }
+  return {inspect,apply};
+})());
 function applyGoogleCalendarEvents(result){
   const merged=PlannerCore.mergeGoogleCalendar(data,result,googleEventToAppointment);
   data=merged.data;
