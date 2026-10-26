@@ -1,6 +1,6 @@
 const CACHE_PREFIX='max-planner-pwa-';
-const CACHE_NAME=CACHE_PREFIX+'1.20.2';
-const APP_SHELL=['./','./index.html','./planner-core.js','./planner-safety.js','./mum-private-calendar.js','./app.webmanifest','./icon-192.png','./icon-512.png'];
+const CACHE_NAME=CACHE_PREFIX+'1.20.3';
+const APP_SHELL=['./','./index.html','./planner-core.js','./planner-safety.js','./mum-private-calendar.js','./mum-samsung-local-import.js','./app.webmanifest','./icon-192.png','./icon-512.png'];
 const SCOPE=new URL('./',self.registration.scope);
 const SHELL_PATHS=new Set(APP_SHELL.map(path=>new URL(path,SCOPE).pathname));
 const AUTH_PATH=new URL('./google-calendar-connect.html',SCOPE).pathname;
