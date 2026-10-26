@@ -219,3 +219,36 @@ test('HTTP errors do not overwrite a working offline shell',async()=>{
   vm.createContext(ctx);vm.runInContext(fs.readFileSync(path.join(root,'sw.js'),'utf8'),ctx);
   let pending;handlers.fetch({request:new Request('https://example.test/max-planner/index.html'),respondWith:value=>pending=value});assert.equal(await (await pending).text(),'Saved planner');assert.equal(stored.size,1);
 });
+
+test('encrypted Mum feed links an existing manual appointment and preserves private notes without duplicates',async()=>{
+  const env=await app();
+  env.api.setState({
+    data:{'2026-10-26':{appts:[{
+      id:'manual-mum',who:'mum',title:'Existing appointment',start:'10:00',end:'11:00',
+      notes:'Keep manual notes',status:'completed',flag:true,source:'samsung-ics-mum-2026-10-18'
+    }],todos:[{id:'t1',text:'Keep this todo'}],noteItems:[{id:'n1',text:'Keep this note'}]}},
+    recurring:[{id:'r1',title:'Keep recurring'}],meta:{}
+  });
+  const event={
+    id:'google-123',summary:'Existing appointment',
+    start:{dateTime:'2026-10-26T10:00:00'},end:{dateTime:'2026-10-26T11:00:00'}
+  };
+  const feed={items:[{...event,_calendarId:'martina.orihuela@gmail.com'}],
+    calendars:[{id:'martina.orihuela@gmail.com'}],minKey:'2026-10-01',maxKey:'2027-10-01'};
+  const first=env.context.MaxPlannerPrivateMumFeed.apply(feed,'test-fingerprint-1');
+  assert.equal(first.imported,0);
+  assert.equal(first.linked,1);
+  let state=json(env.api.getState());
+  assert.equal(state.data['2026-10-26'].appts.length,1);
+  assert.equal(state.data['2026-10-26'].appts[0].id,'manual-mum');
+  assert.equal(state.data['2026-10-26'].appts[0].notes,'Keep manual notes');
+  assert.equal(state.data['2026-10-26'].appts[0].status,'completed');
+  assert.equal(state.data['2026-10-26'].appts[0].googleEventId,'google-123');
+  assert.equal(state.data['2026-10-26'].todos[0].text,'Keep this todo');
+  assert.equal(state.data['2026-10-26'].noteItems[0].text,'Keep this note');
+  assert.equal(state.recurring[0].id,'r1');
+  const again=env.context.MaxPlannerPrivateMumFeed.apply(feed,'test-fingerprint-1');
+  assert.equal(again.imported,0);
+  state=json(env.api.getState());
+  assert.equal(state.data['2026-10-26'].appts.length,1);
+});
