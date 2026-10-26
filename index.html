@@ -640,8 +640,8 @@ const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-1
 const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
 const SAFETY_BACKUP_KEY_V39='max-planner-safety-pre-roster-oct26-nov1-2026';
-const VERSION=44;
-const APP_BUILD='PWA 1.20.0';
+const VERSION=45;
+const APP_BUILD='PWA 1.20.1';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -1119,6 +1119,41 @@ if(!meta.workRosterOct26ToNov1V39Applied){
     }
   });
   meta.workRosterOct26ToNov1V39Applied=true;
+}
+
+// Confirmed restaurant roster from screenshot: 2–8 Nov 2026.
+// Add-only migration; preserve unrelated appointments and avoid duplicate shifts.
+if(!meta.workRosterNov2To8V45Applied){
+  const workDates=[
+    '2026-11-03',
+    '2026-11-05',
+    '2026-11-06',
+    '2026-11-07',
+    '2026-11-08'
+  ];
+  workDates.forEach(key=>{
+    const dd=dayData(key);
+    const exists=dd.appts.some(a=>
+      isWorkShiftAppointment(a) &&
+      normalizeTime(a.start)==='19:00' &&
+      normalizeTime(a.end)==='23:00' &&
+      a.status!=='cancelled'
+    );
+    if(!exists){
+      dd.appts.push({
+        id:uid('a'),
+        start:'19:00',
+        end:'23:00',
+        title:'Work',
+        who:'work',
+        category:'work',
+        subcategory:'shift',
+        colorKey:'auto',
+        status:'pending'
+      });
+    }
+  });
+  meta.workRosterNov2To8V45Applied=true;
 }
 
 // Important job interview confirmed via Calendly for 6 Oct 2026.
