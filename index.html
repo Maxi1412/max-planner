@@ -2045,6 +2045,7 @@ window.MaxPlannerPrivateMumFeed = Object.freeze({
     // Work on a copy, preserving every original item until merge is validated.
     const pending=JSON.parse(JSON.stringify(data));
     let linked=0;
+    const linkedByKey=new Map();
     for(const ev of result.items){
       if(!ev || ev.status==='cancelled') continue;
       const conversion=googleEventToAppointment(ev);
@@ -2065,9 +2066,15 @@ window.MaxPlannerPrivateMumFeed = Object.freeze({
       old.googleEventKey=conversion.appt.googleEventKey;
       old.googleCalendarId=conversion.appt.googleCalendarId;
       old.googleLocalOverrides={...(old.googleLocalOverrides||{}),notes:!!old.notes};
+      linkedByKey.set(conversion.appt.googleEventKey,old.id);
       linked++;
     }
-    const merged=PlannerCore.mergeGoogleCalendar(pending,result,googleEventToAppointment);
+    const merged=PlannerCore.mergeGoogleCalendar(pending,result,ev=>{
+      const conversion=googleEventToAppointment(ev);
+      if(conversion&&linkedByKey.has(conversion.appt.googleEventKey))
+        conversion.appt.id=linkedByKey.get(conversion.appt.googleEventKey);
+      return conversion;
+    });
     data=merged.data;
     meta.mumPrivateFeed={...(meta.mumPrivateFeed||{}),fingerprint,
       lastSync:new Date().toISOString(),imported:merged.imported,
