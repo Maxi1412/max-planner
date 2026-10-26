@@ -1,0 +1,51 @@
+name: Private Mum Calendar Sync
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: mum-private-calendar-feed
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.repository_id == '1390657190'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Authenticate with Google Cloud (short-lived credential; no JSON keys)
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: 'projects/11523095308/locations/global/workloadIdentityPools/max-planner-github-sync/providers/github-actions-max-planner'
+          service_account: 'max-planner-calendar-reade-370@max-planner-512013.iam.gserviceaccount.com'
+          token_format: access_token
+          access_token_scopes: 'https://www.googleapis.com/auth/calendar.events.readonly'
+          create_credentials_file: false
+
+      - name: Read and encrypt shared calendar (never commit plaintext)
+        env:
+          GOOGLE_ACCESS_TOKEN: \${{ steps.auth.outputs.access_token }}
+          MUM_CALENDAR_FEED_KEY: \${{ secrets.MUM_CALENDAR_FEED_KEY }}
+        run: node scripts/build-mum-calendar-feed.cjs
+
+      - name: Publish encrypted bytes only when events change
+        run: |
+          if git status --porcelain -- mum-calendar.enc.json | grep -q .; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add -- mum-calendar.enc.json
+            git commit -m 'Update encrypted Mum calendar feed'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          else
+            echo 'No encrypted feed changes.'
+          fi
