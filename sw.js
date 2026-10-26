@@ -1,5 +1,5 @@
 const CACHE_PREFIX='max-planner-pwa-';
-const CACHE_NAME=CACHE_PREFIX+'1.20.0';
+const CACHE_NAME=CACHE_PREFIX+'1.20.1';
 const APP_SHELL=['./','./index.html','./planner-core.js','./planner-safety.js','./app.webmanifest','./icon-192.png','./icon-512.png'];
 const SCOPE=new URL('./',self.registration.scope);
 const SHELL_PATHS=new Set(APP_SHELL.map(path=>new URL(path,SCOPE).pathname));
