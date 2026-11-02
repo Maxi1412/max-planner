@@ -2,6 +2,15 @@
 
 Phone-first calendar PWA for Max and Mum. Published from `main` through GitHub Pages.
 
+## PWA 1.20.6 — automatic unfinished to-do rollover
+
+- At 23:00 **device-local time**, unfinished to-dos from today move into tomorrow's to-do list. Completed to-dos stay on their original dates.
+- When the app has been closed or suspended, overdue unfinished tasks catch up to the current active to-do day when the app is next opened or focused. A closed browser cannot execute JavaScript at 23:00.
+- On first use after this update, rollover starts with that day's tasks; historical unfinished tasks from before activation are not silently swept into today.
+- Task IDs, custom details, existing destination tasks, appointments, work shifts, recurring items, notes, and finance links are preserved. Manual next-day and previous-day moves are unchanged.
+- Before the first upgraded initialization and each actual automatic transfer, a verified local safety snapshot is made. A failed save keeps the original to-dos.
+- Tests cover cutoff time, catch-up, idempotence, completed history, activation, and storage failures.
+
 ## PWA 1.20.0
 
 - The existing planner, recurring-item, and settings storage keys are unchanged.

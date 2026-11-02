@@ -629,7 +629,7 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 <script src="./planner-core.js"></script>
 <script src="./planner-safety.js"></script>
 <script type="module">
-try{await PlannerSafety.prepare('PWA 1.20.0');}
+try{await PlannerSafety.prepare('PWA 1.20.6');}
 catch(error){PlannerSafety.showFailure(error.message,{blocking:true});throw error;}
 const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
@@ -651,7 +651,7 @@ const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
 const SAFETY_BACKUP_KEY_V39='max-planner-safety-pre-roster-oct26-nov1-2026';
 const VERSION=47;
-const APP_BUILD='PWA 1.20.5';
+const APP_BUILD='PWA 1.20.6';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -3064,6 +3064,55 @@ window.addEventListener('resize',()=>{scalePreview();syncStickyHeaderOffset();})
 document.getElementById('previewClose').onclick=()=>{document.getElementById('printPreview').classList.remove('open');document.getElementById('printSheet').style.transform='';};
 document.getElementById('previewPrint').onclick=()=>window.print();
 
+
+ // Automatic unfinished to-do rollover uses the device's local 23:00 boundary.
+ // Browsers cannot run a closed PWA, so a missed boundary catches up on next use.
+ let todoRolloverTimer=null;
+ let todoRolloverBusy=false;
+ async function autoRolloverPendingTodos(now=new Date()){
+   if(todoRolloverBusy) return 0;
+   todoRolloverBusy=true;
+   try{
+     today=cloneDate(now);
+     const todayKey=iso(now);
+     if(!meta.todoRolloverStartedOn){
+       const previousMeta=meta;
+       meta={...meta,todoRolloverStartedOn:todayKey};
+       if(!save()){meta=previousMeta;return 0;}
+     }
+     const targetKey=iso(new Date(now.getFullYear(),now.getMonth(),now.getDate()+(now.getHours()>=23?1:0)));
+     const preview=PlannerCore.rolloverPendingTodos(data,targetKey,meta.todoRolloverStartedOn);
+     if(!preview.moved) return 0;
+     await PlannerSafety.snapshot('before-auto-todo-rollover');
+     // Recalculate after the asynchronous safety snapshot to retain intervening edits.
+     const change=PlannerCore.rolloverPendingTodos(data,targetKey,meta.todoRolloverStartedOn);
+     if(!change.moved) return 0;
+     const previousData=data;
+     data=change.data;
+     if(!save()){data=previousData;return 0;}
+     render();
+     return change.moved;
+   }catch(error){
+     PlannerSafety.showFailure('Automatic to-do rollover could not finish; existing tasks were kept. '+String(error?.message||error));
+     return 0;
+   }finally{
+     todoRolloverBusy=false;
+   }
+ }
+ function scheduleNextTodoRollover(){
+   clearTimeout(todoRolloverTimer);
+   const now=new Date(),next=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,0,0,0);
+   if(next<=now) next.setDate(next.getDate()+1);
+   todoRolloverTimer=setTimeout(checkTodoRollover,Math.max(1000,next.getTime()-now.getTime()));
+ }
+ function checkTodoRollover(){
+   autoRolloverPendingTodos().finally(scheduleNextTodoRollover);
+ }
+ document.addEventListener('visibilitychange',()=>{
+   if(document.visibilityState==='visible') checkTodoRollover();
+ });
+ window.addEventListener('focus',checkTodoRollover);
+
 // Main navigation
 function goToday(){today=cloneDate(new Date());current=new Date(today);render();}
 document.getElementById('btnMonth').onclick=()=>{mode='month';render();};
@@ -3200,6 +3249,7 @@ function runWhenIdle(fn,timeout=1200){
   else setTimeout(fn,250);
 }
 runWhenIdle(runStartupMaintenance,700);
+runWhenIdle(checkTodoRollover,750);
 initGoogleCalendarAuthBridgeListener();
 consumeGoogleCalendarHandoff().catch(e=>{
   console.warn('Google Calendar auth handoff failed',e);

@@ -53,7 +53,7 @@ function environment(values={},fetcher=async()=>{throw new Error('Unexpected net
 }
 async function app(values={},fetcher){
   const env=environment(values,fetcher);
-  const expose=`\nreturn {getState:()=>({data,recurring,meta}),setState:value=>{data=value.data;recurring=value.recurring||[];meta=value.meta||{};},runStartupMaintenance,fetchGoogleCalendarEvents,applyGoogleCalendarEvents,saveAppointmentFromModal,openAppointmentModal,googleEventToAppointment,uploadDriveBackup,manualDriveBackup,ensureDriveTokenClient,driveBackupStatusInfo,setDriveToken:()=>persistDriveSessionToken('test-token',3600),setDate:value=>{current=value;},renderDay,buildPrintWeek};`;
+  const expose=`\nreturn {getState:()=>({data,recurring,meta}),setState:value=>{data=value.data;recurring=value.recurring||[];meta=value.meta||{};},runStartupMaintenance,fetchGoogleCalendarEvents,applyGoogleCalendarEvents,saveAppointmentFromModal,openAppointmentModal,googleEventToAppointment,uploadDriveBackup,manualDriveBackup,ensureDriveTokenClient,driveBackupStatusInfo,setDriveToken:()=>persistDriveSessionToken('test-token',3600),setDate:value=>{current=value;},autoRolloverPendingTodos,renderDay,buildPrintWeek};`;
   env.api=await vm.runInContext('(async()=>{'+main+expose+'})()',env.context);return env;
 }
 const existing=()=>({data:{'2026-10-12':{appts:[{id:'manual',title:'Appointment entered by Max',start:'11:00',end:'12:00',who:'mum',category:'health',notes:'Keep these details',status:'completed',flag:true,expenseLink:{id:'finance-1',amount:25},customReference:'from-user'},{id:'gpt',title:'Record entered through GPT',start:'18:00',end:'18:45',who:'work',notes:'Keep this too',status:'pending'}],todos:[{id:'todo-1',text:'User task',status:'pending'}],noteItems:[{id:'note-1',text:'User note'}]}},recurring:[{id:'custom-recurring',type:'reminder',title:'User recurring reminder',startDate:'2026-10-01',repeat:'weekly',who:'mum'}],meta:{disabledDefaults:['d1']}});
@@ -76,7 +76,11 @@ test('upgrade snapshots raw user data before migrations and retains manual/GPT d
     for(const [field,value] of Object.entries(old)) assert.deepEqual(kept[field],value,'Existing field preserved: '+field);
   }
   assert.deepEqual(state.data['2026-10-12'].todos,before.data['2026-10-12'].todos);
-  assert.deepEqual(state.data['2026-10-12'].noteItems,before.data['2026-10-12'].noteItems);
+  for(const note of before.data['2026-10-12'].noteItems){
+    const kept=state.data['2026-10-12'].noteItems.find(x=>x.id===note.id);
+    assert.ok(kept,'Existing note retained');
+    assert.equal(kept.text,note.text,'Original note content preserved');
+  }
   assert.ok(state.recurring.some(x=>x.id==='custom-recurring'));
   assert.equal(env.localStorage.getItem('max-planner-pending-save-v1'),null);
 });
@@ -311,4 +315,94 @@ test('invalid Samsung rescue file is rejected before altering appointments',asyn
   const initial=json(env.api.getState());
   assert.throws(()=>env.context.MaxPlannerMumSamsungImport.apply({format:'unknown',events:[]}),/not a valid/);
   assert.deepEqual(json(env.api.getState()),initial);
+});
+
+test('23:00 rollover moves only unfinished tasks since activation, preserving every other record',()=>{
+  const completed={id:'done',text:'Keep completed on original day',status:'completed'};
+  const pending={id:'pending',text:'Move to tomorrow',status:'pending',custom:'keep'};
+  const before={
+    '2026-10-30':{appts:[],todos:[{id:'historical',text:'Old task',status:'pending'}],noteItems:[]},
+    '2026-11-02':{appts:[{id:'appointment',title:'Do not touch'}],todos:[completed,pending],noteItems:[{id:'note',text:'Keep notes'}]},
+    '2026-11-03':{appts:[{id:'tomorrow',title:'Preserve tomorrow'}],todos:[{id:'existing',text:'Already scheduled',status:'pending'}],noteItems:[]},
+    '2026-11-04':{appts:[],todos:[{id:'future',text:'Future task'}],noteItems:[]}
+  };
+  const result=Core.rolloverPendingTodos(before,'2026-11-03','2026-11-02');
+  assert.equal(result.moved,1);
+  assert.deepEqual(before['2026-11-02'].todos,[completed,pending],'Original input was not mutated');
+  assert.deepEqual(result.data['2026-10-30'],before['2026-10-30']);
+  assert.deepEqual(result.data['2026-11-02'].todos,[completed]);
+  assert.deepEqual(result.data['2026-11-02'].appts,before['2026-11-02'].appts);
+  assert.deepEqual(result.data['2026-11-02'].noteItems,before['2026-11-02'].noteItems);
+  assert.deepEqual(result.data['2026-11-03'].todos,[before['2026-11-03'].todos[0],pending]);
+  assert.deepEqual(result.data['2026-11-03'].appts,before['2026-11-03'].appts);
+  assert.deepEqual(result.data['2026-11-04'],before['2026-11-04']);
+  const second=Core.rolloverPendingTodos(result.data,'2026-11-03','2026-11-02');
+  assert.equal(second.moved,0);
+  assert.strictEqual(second.data,result.data,'Second execution did not duplicate or rewrite tasks');
+});
+
+test('automatic rollover waits until exactly 23:00 and saves completed history',async()=>{
+  const original={
+    data:{
+      '2026-11-02':{appts:[],todos:[{id:'t-pending',text:'Unfinished',status:'pending'},{id:'t-done',text:'Finished',status:'completed'}],noteItems:[]},
+      '2026-11-03':{appts:[],todos:[{id:'t-tomorrow',text:'Already tomorrow',status:'pending'}],noteItems:[]}
+    },recurring:[],meta:{disabledDefaults:[],todoRolloverStartedOn:'2026-11-02'}
+  };
+  const env=await app(storageFor(original));
+  assert.equal(await env.api.autoRolloverPendingTodos(new Date(2026,10,2,22,59,59)),0);
+  assert.equal(env.api.getState().data['2026-11-02'].todos.length,2);
+  assert.equal(await env.api.autoRolloverPendingTodos(new Date(2026,10,2,23,0,0)),1);
+  const state=json(env.api.getState());
+  assert.deepEqual(state.data['2026-11-02'].todos,[original.data['2026-11-02'].todos[1]]);
+  assert.deepEqual(state.data['2026-11-03'].todos,[original.data['2026-11-03'].todos[0],original.data['2026-11-02'].todos[0]]);
+  assert.deepEqual(JSON.parse(env.localStorage.getItem('max-planner-v1'))['2026-11-03'].todos,state.data['2026-11-03'].todos);
+  assert.ok([...env.records.values()].some(s=>s.reason==='before-auto-todo-rollover'),'A safety snapshot is made before moving tasks');
+  assert.equal(await env.api.autoRolloverPendingTodos(new Date(2026,10,2,23,0,5)),0,'Repeated check is idempotent');
+});
+
+test('unfinished tasks catch up across closed days, leaving completed tasks behind',async()=>{
+  const seed={
+    data:{
+      '2026-11-02':{appts:[],todos:[{id:'mon',text:'Monday unfinished',status:'pending'},{id:'mon-done',text:'Done on Monday',status:'completed'}],noteItems:[]},
+      '2026-11-03':{appts:[],todos:[{id:'tue',text:'Tuesday unfinished',status:'pending'}],noteItems:[]},
+      '2026-11-05':{appts:[],todos:[{id:'thu',text:'Thursday already planned',status:'pending'}],noteItems:[]}
+    },recurring:[],meta:{disabledDefaults:[],todoRolloverStartedOn:'2026-11-02'}
+  };
+  const env=await app(storageFor(seed));
+  assert.equal(await env.api.autoRolloverPendingTodos(new Date(2026,10,5,10,0)),2);
+  const state=json(env.api.getState().data);
+  assert.deepEqual(state['2026-11-02'].todos,[seed.data['2026-11-02'].todos[1]]);
+  assert.deepEqual(state['2026-11-03'].todos,[]);
+  assert.deepEqual(state['2026-11-05'].todos.map(t=>t.id),['thu','mon','tue']);
+  assert.equal(await env.api.autoRolloverPendingTodos(new Date(2026,10,5,23,0)),3,'At 23:00 the unfinished list moves to November 6');
+  assert.deepEqual(json(env.api.getState().data)['2026-11-06'].todos.map(t=>t.id),['thu','mon','tue']);
+});
+
+test('first activation does not sweep historical unfinished to-dos',async()=>{
+  const seed={
+    data:{
+      '2026-10-26':{appts:[],todos:[{id:'old',text:'Historical task',status:'pending'}],noteItems:[]},
+      '2026-11-02':{appts:[],todos:[{id:'today',text:'New task',status:'pending'}],noteItems:[]}
+    },recurring:[],meta:{disabledDefaults:[]}
+  };
+  const env=await app(storageFor(seed));
+  assert.equal(await env.api.autoRolloverPendingTodos(new Date(2026,10,2,22,0)),0);
+  assert.equal(env.api.getState().meta.todoRolloverStartedOn,'2026-11-02');
+  assert.equal(await env.api.autoRolloverPendingTodos(new Date(2026,10,2,23,0)),1);
+  const state=json(env.api.getState().data);
+  assert.deepEqual(state['2026-10-26'].todos,seed.data['2026-10-26'].todos);
+  assert.deepEqual(state['2026-11-03'].todos,[seed.data['2026-11-02'].todos[0]]);
+});
+
+test('failed automatic save leaves original to-dos available and raises a storage warning',async()=>{
+  const seed={
+    data:{'2026-11-02':{appts:[],todos:[{id:'safe',text:'Must not lose',status:'pending'}],noteItems:[]}},
+    recurring:[],meta:{disabledDefaults:[],todoRolloverStartedOn:'2026-11-02'}
+  };
+  const env=await app(storageFor(seed));
+  env.localStorage.fail=key=>key==='max-planner-v1';
+  assert.equal(await env.api.autoRolloverPendingTodos(new Date(2026,10,2,23,0)),0);
+  assert.deepEqual(json(env.api.getState().data)['2026-11-02'].todos,seed.data['2026-11-02'].todos);
+  assert.deepEqual(JSON.parse(env.localStorage.getItem('max-planner-v1'))['2026-11-02'].todos,seed.data['2026-11-02'].todos);
+  assert.ok(env.document.getElementById('storageWarning'));
 });
