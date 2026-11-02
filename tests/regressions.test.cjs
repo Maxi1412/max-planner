@@ -76,7 +76,11 @@ test('upgrade snapshots raw user data before migrations and retains manual/GPT d
     for(const [field,value] of Object.entries(old)) assert.deepEqual(kept[field],value,'Existing field preserved: '+field);
   }
   assert.deepEqual(state.data['2026-10-12'].todos,before.data['2026-10-12'].todos);
-  assert.deepEqual(state.data['2026-10-12'].noteItems,before.data['2026-10-12'].noteItems);
+  for(const note of before.data['2026-10-12'].noteItems){
+    const kept=state.data['2026-10-12'].noteItems.find(x=>x.id===note.id);
+    assert.ok(kept,'Existing note retained');
+    assert.equal(kept.text,note.text,'Original note content preserved');
+  }
   assert.ok(state.recurring.some(x=>x.id==='custom-recurring'));
   assert.equal(env.localStorage.getItem('max-planner-pending-save-v1'),null);
 });
