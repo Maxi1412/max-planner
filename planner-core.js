@@ -111,5 +111,35 @@
     }
     return {data:next,...stats,total:seen.size};
   }
-  return {validateBackup,moveMonth,googleLinkage,editedAppointment,selectMumCalendars,mergeGoogleCalendar};
+
+  // Transfer only unfinished tasks from eligible past days. Keep completed history,
+  // original task IDs, destination tasks and every non-to-do record intact.
+  function rolloverPendingTodos(data,targetKey,sinceKey){
+    const validKey=/^\d{4}-\d{2}-\d{2}$/;
+    if(!isObject(data)||!validKey.test(targetKey)||!validKey.test(sinceKey)) throw new Error('Invalid automatic to-do rollover date.');
+    const sources=Object.keys(data).filter(key=>
+      validKey.test(key)&&key>=sinceKey&&key<targetKey&&
+      Array.isArray(data[key]?.todos)&&data[key].todos.some(t=>isObject(t)&&t.status!=='completed')
+    ).sort();
+    if(!sources.length) return {data,moved:0};
+    const next=clone(data);
+    const destination=next[targetKey]||(next[targetKey]={appts:[],todos:[],noteItems:[]});
+    if(!Array.isArray(destination.todos)) throw new Error('Destination to-do list is invalid.');
+    const ids=new Set(destination.todos.filter(isObject).map(t=>t.id).filter(Boolean));
+    let moved=0;
+    for(const key of sources){
+      const remaining=[];
+      for(const task of next[key].todos){
+        if(!isObject(task)||task.status==='completed'){remaining.push(task);continue;}
+        if(!task.id||!ids.has(task.id)){
+          destination.todos.push(task);
+          if(task.id) ids.add(task.id);
+        }
+        moved++;
+      }
+      next[key].todos=remaining;
+    }
+    return {data:next,moved};
+  }
+  return {validateBackup,moveMonth,googleLinkage,editedAppointment,selectMumCalendars,mergeGoogleCalendar,rolloverPendingTodos};
 });
