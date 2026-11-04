@@ -36,7 +36,7 @@
   --pal-indigo:#4338ca; --pal-indigo-bg:#e0e7ff;
   --pal-slate:#475569; --pal-slate-bg:#e2e8f0;
   --accent:#1d4e46; --sticky:#fff6cf; --sticky-border:#e8d98a; --flag:#d97706;
-  --header-height:54px;
+  --header-height:54px; --client-hours-bg:#e3e8ef;
   --ok:#18794e; --ok-bg:#e5f5ec; --danger:#b42318; --danger-bg:#feeceb;
   box-sizing:border-box;
   padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
@@ -45,7 +45,7 @@
   :root:not([data-theme="light"]){
     --bg:#181614; --card:#242220; --ink:#f0ede6; --sub:#a39a8a;
     --line:#3a362f; --mine-bg:#123b45; --mum-bg:#3d2115; --sticky:#3a3418; --sticky-border:#5a4f22;
-    --work-bg:#2a3138; --meal-bg:#173b2a; --other-bg:#2e1f3d; --ok-bg:#18392a; --danger-bg:#44211f;
+    --work-bg:#2a3138; --meal-bg:#173b2a; --other-bg:#2e1f3d; --ok-bg:#18392a; --danger-bg:#44211f; --client-hours-bg:#303842;
     --cat-general-bg:#123b45; --cat-prep-bg:#4a3514; --cat-travel-bg:#30245a;
     --cat-health-bg:#44211f; --cat-admin-bg:#153f3b; --cat-home-bg:#4a2818;
     --cat-errand-bg:#18384c; --cat-social-bg:#4a2035; --cat-career-bg:#292b58; --cat-meeting-bg:#352044;
@@ -54,7 +54,7 @@
 :root[data-theme="dark"]{
   --bg:#181614; --card:#242220; --ink:#f0ede6; --sub:#a39a8a;
   --line:#3a362f; --mine-bg:#123b45; --mum-bg:#3d2115; --sticky:#3a3418; --sticky-border:#5a4f22;
-  --work-bg:#2a3138; --meal-bg:#173b2a; --other-bg:#2e1f3d; --ok-bg:#18392a; --danger-bg:#44211f;
+  --work-bg:#2a3138; --meal-bg:#173b2a; --other-bg:#2e1f3d; --ok-bg:#18392a; --danger-bg:#44211f; --client-hours-bg:#303842;
 }
 html,body{height:100%;}
 html{scroll-padding-top:env(safe-area-inset-top,0px);}
@@ -163,6 +163,10 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 #slots{position:relative;}
 .slot{display:flex;border-top:1px solid var(--line);height:84px;position:relative;}
 .slot:last-child{border-bottom:1px solid var(--line);}
+/* Client availability is a background only; it never adds an appointment or intercepts taps. */
+.slot.clientHours{background:var(--client-hours-bg);}
+.slot.clientHoursStart{border-radius:12px 12px 0 0;}
+.slot.clientHoursEnd{border-radius:0 0 12px 12px;}
 .slot .time{width:52px;flex-shrink:0;color:var(--sub);font-size:12px;padding:9px 0;font-weight:700;}
 .slot .body{flex:1;padding:5px 0;min-height:84px;position:relative;}
 #spanLayer{position:absolute;left:52px;right:0;top:0;z-index:4;pointer-events:none;}
@@ -629,7 +633,7 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 <script src="./planner-core.js"></script>
 <script src="./planner-safety.js"></script>
 <script type="module">
-try{await PlannerSafety.prepare('PWA 1.20.7');}
+try{await PlannerSafety.prepare('PWA 1.20.8');}
 catch(error){PlannerSafety.showFailure(error.message,{blocking:true});throw error;}
 const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
@@ -651,7 +655,7 @@ const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
 const SAFETY_BACKUP_KEY_V39='max-planner-safety-pre-roster-oct26-nov1-2026';
 const VERSION=48;
-const APP_BUILD='PWA 1.20.7';
+const APP_BUILD='PWA 1.20.8';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -1489,6 +1493,11 @@ function renderDay(){
   const hours=Array.from({length:lastHour-firstHour+1},(_,i)=>firstHour+i);
   hours.forEach(h=>{
     const row=document.createElement('div');row.className='slot';
+    if(h>=11 && h<14){
+      row.classList.add('clientHours');
+      if(h===11) row.classList.add('clientHoursStart');
+      if(h===13) row.classList.add('clientHoursEnd');
+    }
     const t=document.createElement('div');t.className='time';t.innerHTML='<span>'+pad(h)+':00</span><span class="hourPlus">＋</span>';
     t.title='Add appointment at '+pad(h)+':00';
     t.onclick=()=>openAppointmentModal(null,key,pad(h)+':00');
