@@ -172,7 +172,7 @@ test('editing generated defaults produces a real appointment rather than keeping
 test('day view includes early imported appointments and late entries',async()=>{
   const env=await app();env.api.setState({data:{'2026-10-21':{appts:[{id:'early',title:'Early event',start:'02:00',end:'03:00',who:'mum'},{id:'late',title:'Late event',start:'23:00',end:'23:45',who:'mine'}],todos:[],noteItems:[]}},recurring:[],meta:{disabledDefaults:[]}});
   env.api.setDate(new Date(2026,9,21));env.api.renderDay();
-  const rows=env.elements.get('slots').children.filter(x=>x.className==='slot');assert.equal(rows.length,22);
+  const rows=env.elements.get('slots').children.filter(x=>x.classList.contains('slot'));assert.equal(rows.length,22);
   assert.ok(rows[0].children[0].innerHTML.includes('02:00'));assert.ok(rows.at(-1).children[0].innerHTML.includes('23:00'));
 });
 test('service worker leaves Google requests and other PWAs alone, and removes only old Planner caches',async()=>{
@@ -560,11 +560,12 @@ test('overlapping coloured client appointments stay as normal tappable cards abo
   assert.ok(row.classList.contains('clientHours'),'Time beneath appointments is grey');
   const layer=children.find(x=>x.id==='spanLayer');
   assert.ok(layer,'Existing overlapping appointment layer is still present');
-  assert.equal(layer.children.length,2);
-  assert.ok(layer.children.some(x=>x.className.includes('color-purple')),'First appointment retains original purple colour');
-  assert.ok(layer.children.some(x=>x.className.includes('color-slate')),'Second appointment retains original slate colour');
-  assert.ok(layer.children.every(x=>x.className.includes('appt span')),'Normal appointment cards are unchanged');
-  assert.ok(layer.children.every(x=>x.listeners.pointerdown && x.listeners.pointerup),'Appointments remain interactive');
-  assert.notEqual(layer.children[0].style.left,layer.children[1].style.left,'Overlaps remain in two columns');
+  const clientCards=layer.children.filter(x=>/Pick up Folder Kornelia|See Clients\/ Work/.test(x.innerHTML));
+  assert.equal(clientCards.length,2,'Both requested client appointments remain on top');
+  assert.ok(clientCards.some(x=>x.className.includes('color-purple')),'First appointment retains original purple colour');
+  assert.ok(clientCards.some(x=>x.className.includes('color-slate')),'Second appointment retains original slate colour');
+  assert.ok(clientCards.every(x=>x.className.includes('appt span')),'Normal appointment cards are unchanged');
+  assert.ok(clientCards.every(x=>x.listeners.pointerdown && x.listeners.pointerup),'Appointments remain interactive');
+  assert.notEqual(clientCards[0].style.left,clientCards[1].style.left,'Overlaps remain in two columns');
   assert.deepEqual(json(env.api.getState()),before,'Viewing client hours makes no data changes');
 });
