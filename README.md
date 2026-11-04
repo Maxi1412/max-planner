@@ -2,6 +2,15 @@
 
 Phone-first calendar PWA for Max and Mum. Published from `main` through GitHub Pages.
 
+## PWA 1.20.7 — daily appointments from 6 Nov through 31 Dec 2026
+
+- Copy the four highlighted appointments on Friday 6 November to every day until 31 December 2026 inclusive: **08:15–09:00 Wake up, shower, coffee** (green), **09:15–09:45 Walk the dogs** (Shared / family, blue), **10:00–10:30 Make Breakfast** (green), and **14:00–14:45 Lunch/Food** (blue).
+- The two purple Travel Time appointments are not copied: they are outside the intended four appointment entries.
+- On first opening version 1.20.7, a safety snapshot is captured before any local migration. Dates before 6 November and dates in 2027 are untouched.
+- Exact matching appointments already entered by hand are preserved rather than duplicated.
+- Older, untouched auto-generated 08:30 morning entries are adjusted to 08:15 in place, preserving their IDs. If the exact 08:15 appointment already exists, the old 08:30 generated entry is retained in storage but hidden to prevent displaying duplicates. Manually changed or completed legacy records are preserved.
+- All other appointments, personal notes, work shifts, to-dos, finance links, calendar integrations and backup files remain unchanged. A saved migration flag prevents repeating the changes.
+
 ## PWA 1.20.6 — automatic unfinished to-do rollover
 
 - At 23:00 **device-local time**, unfinished to-dos from today move into tomorrow's to-do list. Completed to-dos stay on their original dates.

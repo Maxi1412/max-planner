@@ -629,7 +629,7 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 <script src="./planner-core.js"></script>
 <script src="./planner-safety.js"></script>
 <script type="module">
-try{await PlannerSafety.prepare('PWA 1.20.6');}
+try{await PlannerSafety.prepare('PWA 1.20.7');}
 catch(error){PlannerSafety.showFailure(error.message,{blocking:true});throw error;}
 const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
@@ -650,8 +650,8 @@ const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-1
 const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
 const SAFETY_BACKUP_KEY_V39='max-planner-safety-pre-roster-oct26-nov1-2026';
-const VERSION=47;
-const APP_BUILD='PWA 1.20.6';
+const VERSION=48;
+const APP_BUILD='PWA 1.20.7';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -1203,6 +1203,64 @@ if(!meta.dailyMorningRoutineThrough2026V46Applied){
   meta.dailyMorningRoutineThrough2026V46Applied=true;
 }
 
+
+// Exact appointments from the Friday 6 Nov screenshot, repeated daily until New Year's Eve.
+// Copies are local appointments (not open-ended recurring series), so the end date is firm.
+const DAILY_ROUTINE_V48=[
+  {start:'08:15',end:'09:00',title:'Wake up, shower, coffee',who:'mine',category:'meal',subcategory:'meal',colorKey:'mint'},
+  {start:'09:15',end:'09:45',title:'Walk the dogs',who:'shared',category:'general',subcategory:'general',colorKey:'sky'},
+  {start:'10:00',end:'10:30',title:'Make Breakfast',who:'mine',category:'meal',subcategory:'meal',colorKey:'mint'},
+  {start:'14:00',end:'14:45',title:'Lunch/Food',who:'mine',category:'meal',subcategory:'meal',colorKey:'sky'}
+];
+const LEGACY_WAKE_FIELDS_V48=new Set(['id','start','end','title','who','category','subcategory','colorKey','status','source','flag','notes','expenseLink']);
+function isUneditedLegacyWakeV48(a){
+  return a?.source==='daily-morning-routine-2026' &&
+    a.status==='pending' &&
+    String(a.title||'').trim().toLowerCase()==='wake up, shower, coffee' &&
+    normalizeTime(a.start)==='08:30' && normalizeTime(a.end)==='09:00' &&
+    (a.who||'mine')==='mine' && !a.notes && !a.expenseLink && !a.flag &&
+    Object.keys(a).every(k=>LEGACY_WAKE_FIELDS_V48.has(k));
+}
+function applyDailyRoutineV48(){
+  if(meta.dailyRoutineNov6ToDec31V48Applied) return {added:0,adjusted:0,superseded:0};
+  const summary={added:0,adjusted:0,superseded:0};
+  for(let date=parseIso('2026-11-06');date<=parseIso('2026-12-31');date=dateAdd(date,1)){
+    const dd=dayData(iso(date));
+    const exact=template=>dd.appts.some(a=>
+      !a.supersededByDailyRoutineV48 &&
+      String(a.title||'').trim().toLowerCase()===template.title.toLowerCase() &&
+      normalizeTime(a.start)===template.start &&
+      normalizeTime(a.end)===template.end
+    );
+    const legacy=dd.appts.find(isUneditedLegacyWakeV48);
+    for(const template of DAILY_ROUTINE_V48){
+      if(exact(template)){
+        // The screenshot day may already contain the manually entered 08:15 wake-up.
+        // Preserve the old generated 08:30 record in storage, but do not show a duplicate.
+        if(template.start==='08:15' && legacy){
+          legacy.supersededByDailyRoutineV48=true;
+          summary.superseded++;
+        }
+        continue;
+      }
+      if(template.start==='08:15' && legacy){
+        // Correct only an untouched auto-generated 08:30 entry; retain its ID,
+        // notes/status/colour and all unrelated user records.
+        legacy.start=template.start;
+        legacy.end=template.end;
+        summary.adjusted++;
+      }else{
+        dd.appts.push({id:uid('a'),...template,flag:false,status:'pending',notes:'',
+          source:'screenshot-daily-routine-2026-v48'});
+        summary.added++;
+      }
+    }
+  }
+  meta.dailyRoutineNov6ToDec31V48Applied=true;
+  meta.dailyRoutineV48Summary=summary;
+  return summary;
+}
+
 // Important job interview confirmed via Calendly for 6 Oct 2026.
 if(!meta.inmoInterviewOct6Applied){
   const dd=dayData('2026-10-06');
@@ -1264,9 +1322,23 @@ meta.plasterReminderMigrationApplied=true;
 let startupMaintenanceDone=false;
 function runStartupMaintenance(){
   if(startupMaintenanceDone) return;
-  startupMaintenanceDone=true;
-  syncAllWorkSupportBlocks();
-  save();
+  // Stage on a copy. If storage fails, keep the original in-memory state too.
+  const originalData=data,originalMeta=meta;
+  try{
+    data=JSON.parse(JSON.stringify(data));
+    meta={...meta};
+    applyDailyRoutineV48();
+    syncAllWorkSupportBlocks();
+    if(!save()){
+      data=originalData;meta=originalMeta;
+      return;
+    }
+    startupMaintenanceDone=true;
+    render();
+  }catch(error){
+    data=originalData;meta=originalMeta;
+    PlannerSafety.showFailure('Could not apply daily appointments. All previous data was kept. '+String(error?.message||error));
+  }
 }
 
 let today=cloneDate(new Date());
@@ -1308,7 +1380,7 @@ function mergedAppts(key){
     return !dd.appts.some(a=>normalizeTime(a.start)===def.start && a.title===def.title);
   }).map(def=>({...def,id:def.id+'-'+key,defaultId:def.id,isDefault:true,status:dd.defaultStatus[def.id]||'pending'}));
   const rec=recurringForDate(parseIso(key),'appointment').filter(r=>!dd.appts.some(a=>normalizeTime(a.start)===normalizeTime(r.start) && a.title===r.title));
-  const all=dd.appts.concat(defs,rec);
+  const all=dd.appts.filter(a=>!a.supersededByDailyRoutineV48).concat(defs,rec);
   const hasWork=all.some(isWorkShiftAppointment);
   if(hasWork){
     const work=all.filter(isWorkShiftAppointment).sort((a,b)=>minutes(a.start)-minutes(b.start))[0];
