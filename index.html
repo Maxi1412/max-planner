@@ -1322,10 +1322,23 @@ meta.plasterReminderMigrationApplied=true;
 let startupMaintenanceDone=false;
 function runStartupMaintenance(){
   if(startupMaintenanceDone) return;
-  startupMaintenanceDone=true;
-  applyDailyRoutineV48();
-  syncAllWorkSupportBlocks();
-  save();
+  // Stage on a copy. If storage fails, keep the original in-memory state too.
+  const originalData=data,originalMeta=meta;
+  try{
+    data=JSON.parse(JSON.stringify(data));
+    meta={...meta};
+    applyDailyRoutineV48();
+    syncAllWorkSupportBlocks();
+    if(!save()){
+      data=originalData;meta=originalMeta;
+      return;
+    }
+    startupMaintenanceDone=true;
+    render();
+  }catch(error){
+    data=originalData;meta=originalMeta;
+    PlannerSafety.showFailure('Could not apply daily appointments. All previous data was kept. '+String(error?.message||error));
+  }
 }
 
 let today=cloneDate(new Date());
