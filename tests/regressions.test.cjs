@@ -646,7 +646,7 @@ test('newer Make Breakfast is renamed in place when no other Breakfast is stored
   assert.equal(json(env.api.mergedAppts('2026-11-06')).filter(a=>a.title==='Breakfast'&&a.start==='10:00').length,1,'Legacy virtual default stays suppressed');
 });
 
-test('Mum's appointments always have the exact reminder red regardless of owner-specified category and colour',async()=>{
+test("Mum's appointments always have the exact reminder red regardless of owner-specified category and colour",async()=>{
   const env=await app();
   for(const config of [
     {who:'mum',title:'Mum lunch',category:'meal',colorKey:'mint'},
@@ -683,7 +683,7 @@ test('unopposed Mum entry occupies only the right half; unrelated personal entry
   assert.ok(mum.className.includes('mumAppointment'),'Mum dark red style applied');
   assert.equal(personal.style.left,'calc(0% + 0px)');
   assert.equal(personal.style.width,'calc(100% - 0px)','Non-overlapping personal appointment remains full width');
-  assert.equal(mum.listeners.pointerdown instanceof Function,true,'Mum card remains clickable');
+  assert.equal(typeof mum.listeners.pointerdown==='function',true,'Mum card remains clickable');
   assert.deepEqual(json(env.api.getState()),before,'Right-hand lane adds no storage changes');
 });
 
@@ -708,7 +708,7 @@ test('Mum and personal appointments overlapping simultaneously stay on separate 
   assert.match(p1.style.width,/calc\(25%/);
   assert.match(m1.style.width,/calc\(25%/);
   assert.ok(m1.className.includes('mumAppointment')&&m2.className.includes('mumAppointment'));
-  assert.equal(m1.listeners.pointerdown instanceof Function,true);
+  assert.equal(typeof m1.listeners.pointerdown==='function',true);
 });
 
 test('Mum entries without end time appear on the right half and still support tap/long press',async()=>{
