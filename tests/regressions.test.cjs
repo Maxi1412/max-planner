@@ -53,7 +53,7 @@ function environment(values={},fetcher=async()=>{throw new Error('Unexpected net
 }
 async function app(values={},fetcher){
   const env=environment(values,fetcher);
-  const expose=`\nreturn {getState:()=>({data,recurring,meta}),setState:value=>{data=value.data;recurring=value.recurring||[];meta=value.meta||{};},runStartupMaintenance,fetchGoogleCalendarEvents,applyGoogleCalendarEvents,saveAppointmentFromModal,openAppointmentModal,googleEventToAppointment,uploadDriveBackup,manualDriveBackup,ensureDriveTokenClient,driveBackupStatusInfo,setDriveToken:()=>persistDriveSessionToken('test-token',3600),setDate:value=>{current=value;},autoRolloverPendingTodos,renderDay,buildPrintWeek};`;
+  const expose=`\nreturn {getState:()=>({data,recurring,meta}),setState:value=>{data=value.data;recurring=value.recurring||[];meta=value.meta||{};},runStartupMaintenance,fetchGoogleCalendarEvents,applyGoogleCalendarEvents,saveAppointmentFromModal,openAppointmentModal,googleEventToAppointment,uploadDriveBackup,manualDriveBackup,ensureDriveTokenClient,driveBackupStatusInfo,setDriveToken:()=>persistDriveSessionToken('test-token',3600),setDate:value=>{current=value;},autoRolloverPendingTodos,mergedAppts,renderDay,buildPrintWeek};`;
   env.api=await vm.runInContext('(async()=>{'+main+expose+'})()',env.context);return env;
 }
 const existing=()=>({data:{'2026-10-12':{appts:[{id:'manual',title:'Appointment entered by Max',start:'11:00',end:'12:00',who:'mum',category:'health',notes:'Keep these details',status:'completed',flag:true,expenseLink:{id:'finance-1',amount:25},customReference:'from-user'},{id:'gpt',title:'Record entered through GPT',start:'18:00',end:'18:45',who:'work',notes:'Keep this too',status:'pending'}],todos:[{id:'todo-1',text:'User task',status:'pending'}],noteItems:[{id:'note-1',text:'User note'}]}},recurring:[{id:'custom-recurring',type:'reminder',title:'User recurring reminder',startDate:'2026-10-01',repeat:'weekly',who:'mum'}],meta:{disabledDefaults:['d1']}});
@@ -405,4 +405,102 @@ test('failed automatic save leaves original to-dos available and raises a storag
   assert.deepEqual(json(env.api.getState().data)['2026-11-02'].todos,seed.data['2026-11-02'].todos);
   assert.deepEqual(JSON.parse(env.localStorage.getItem('max-planner-v1'))['2026-11-02'].todos,seed.data['2026-11-02'].todos);
   assert.ok(env.document.getElementById('storageWarning'));
+});
+
+
+test('screenshot appointments repeat daily on 6 November through 31 December, but never into 2027',async()=>{
+  const env=await app();
+  env.api.runStartupMaintenance();
+  const data=json(env.api.getState().data);
+  const wanted=[
+    ['08:15','09:00','Wake up, shower, coffee','mine','mint'],
+    ['09:15','09:45','Walk the dogs','shared','sky'],
+    ['10:00','10:30','Make Breakfast','mine','mint'],
+    ['14:00','14:45','Lunch/Food','mine','sky']
+  ];
+  let days=0;
+  for(let d=new Date(2026,10,6);d<=new Date(2026,11,31);d.setDate(d.getDate()+1)){
+    days++;
+    const key=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
+    assert.ok(data[key],key+' exists');
+    for(const [start,end,title,who,colorKey] of wanted){
+      const matches=json(env.api.mergedAppts(key)).filter(a=>a.title===title&&a.start===start&&a.end===end);
+      assert.equal(matches.length,1,key+' has exactly one '+title+' appointment');
+      assert.equal(matches[0].who,who,key+' '+title+' owner');
+      if(!matches[0].source?.includes('daily-morning-routine')) assert.equal(matches[0].colorKey,colorKey,key+' '+title+' color');
+    }
+    assert.equal(json(env.api.mergedAppts(key)).filter(a=>a.title==='Wake up, shower, coffee'&&a.start==='08:30').length,0,key+' no duplicate 08:30 wake-up');
+  }
+  assert.equal(days,56);
+  assert.ok(!data['2027-01-01']?.appts?.some(a=>wanted.some(x=>x[2]===a.title)),'No Jan 2027 daily copies');
+  assert.equal(env.api.getState().meta.dailyRoutineNov6ToDec31V48Applied,true);
+});
+
+test('existing screenshot entries stay intact, old duplicate wake-up stays archived and hidden',async()=>{
+  const originals=[
+    {id:'screen-wake',title:'Wake up, shower, coffee',start:'08:15',end:'09:00',who:'mine',category:'meal',notes:'Morning personal note',status:'completed',expenseLink:{id:'linked'}},
+    {id:'travel-one',title:'Travel Time',start:'09:00',end:'09:15',who:'other',notes:'Do not touch trip'},
+    {id:'screen-dog',title:'Walk the dogs',start:'09:15',end:'09:45',who:'shared',colorKey:'sky'},
+    {id:'screen-breakfast',title:'Make Breakfast',start:'10:00',end:'10:30',who:'mine',colorKey:'mint'},
+    {id:'screen-lunch',title:'Lunch/Food',start:'14:00',end:'14:45',who:'mine',colorKey:'sky'},
+    {id:'old-auto',title:'Wake up, shower, coffee',start:'08:30',end:'09:00',who:'mine',category:'general',subcategory:'general',colorKey:'auto',status:'pending',source:'daily-morning-routine-2026'}
+  ];
+  const seed={data:{
+    '2026-11-05':{appts:[{id:'earlier',title:'Keep earlier date',start:'10:00',end:'10:30'}],todos:[{id:'task-before',text:'Old task'}],noteItems:[]},
+    '2026-11-06':{appts:originals,todos:[{id:'task',text:'To-do remains'}],noteItems:[{id:'note',text:'Original note'}]},
+    '2026-11-07':{appts:[{id:'old-auto-7',title:'Wake up, shower, coffee',start:'08:30',end:'09:00',who:'mine',category:'general',subcategory:'general',colorKey:'auto',status:'pending',source:'daily-morning-routine-2026'}],todos:[],noteItems:[]}
+  },recurring:[{id:'reminder',type:'reminder',title:'Reminder',startDate:'2026-11-01',repeat:'daily',who:'mum'}],meta:{disabledDefaults:[],dailyMorningRoutineThrough2026V46Applied:true,workRosterNov2To8V45Applied:true}};
+  const env=await app(storageFor(seed));
+  env.api.runStartupMaintenance();
+  const state=json(env.api.getState());
+  const day=state.data['2026-11-06'];
+  for(const entry of originals){
+    const found=day.appts.find(a=>a.id===entry.id);
+    assert.ok(found,'Preserves original '+entry.id);
+    for(const [key,value] of Object.entries(entry)) assert.deepEqual(found[key],value,'Preserves '+entry.id+'.'+key);
+  }
+  assert.equal(day.appts.find(a=>a.id==='old-auto').supersededByDailyRoutineV48,true);
+  assert.equal(json(env.api.mergedAppts('2026-11-06')).filter(a=>a.title==='Wake up, shower, coffee').length,1);
+  assert.equal(day.todos[0].text,'To-do remains');
+  assert.equal(day.noteItems[0].text,'Original note');
+  assert.equal(state.data['2026-11-05'].appts[0].title,'Keep earlier date');
+  assert.equal(state.data['2026-11-05'].todos[0].text,'Old task');
+  assert.equal(state.recurring[0].id,'reminder');
+  const fixed=state.data['2026-11-07'].appts.find(a=>a.id==='old-auto-7');
+  assert.equal(fixed.start,'08:15','Untouched old default corrected in place');
+  assert.equal(fixed.end,'09:00');
+  assert.equal(fixed.source,'daily-morning-routine-2026');
+  assert.equal(state.data['2026-11-07'].appts.filter(a=>a.title==='Wake up, shower, coffee').length,1);
+});
+
+test('daily appointment migration is idempotent across reopening with original IDs',async()=>{
+  const env=await app();
+  env.api.runStartupMaintenance();
+  const first=json(env.api.getState());
+  env.api.runStartupMaintenance();
+  assert.deepEqual(json(env.api.getState()),first);
+  const reopened=await app(storageFor(first));
+  reopened.api.runStartupMaintenance();
+  assert.deepEqual(json(reopened.api.getState().data['2026-11-09'].appts),first.data['2026-11-09'].appts);
+  assert.equal(json(reopened.api.mergedAppts('2026-11-09')).filter(a=>a.title==='Walk the dogs').length,1);
+});
+
+test('manually changed previous wake-up is kept alongside new requested routine',async()=>{
+  const edited={id:'edited-user',start:'08:30',end:'09:00',title:'Wake up, shower, coffee',who:'mine',status:'completed',source:'daily-morning-routine-2026',notes:'Important completed details',colorKey:'purple'};
+  const seed={data:{'2026-11-10':{appts:[edited],todos:[],noteItems:[]}},recurring:[],meta:{dailyMorningRoutineThrough2026V46Applied:true}};
+  const env=await app(storageFor(seed));env.api.runStartupMaintenance();
+  const day=json(env.api.getState().data['2026-11-10']);
+  assert.deepEqual(day.appts.find(a=>a.id===edited.id),{...edited,category:'auto'});
+  assert.ok(day.appts.some(a=>a.title===edited.title&&a.start==='08:15'&&a.status==='pending'));
+});
+
+test('routine migration rolls back in-memory data if local device storage fails',async()=>{
+  const seed={data:{'2026-11-06':{appts:[{id:'old',start:'08:30',end:'09:00',title:'Wake up, shower, coffee',status:'pending',source:'daily-morning-routine-2026'}],todos:[],noteItems:[]}},recurring:[],meta:{dailyMorningRoutineThrough2026V46Applied:true}};
+  const env=await app(storageFor(seed));
+  const before=json(env.api.getState());
+  env.localStorage.fail=key=>key==='max-planner-v1';
+  env.api.runStartupMaintenance();
+  assert.deepEqual(json(env.api.getState()),before,'In-memory planner retains original entries');
+  assert.equal(JSON.parse(env.localStorage.getItem('max-planner-v1'))['2026-11-06'].appts[0].start,'08:30','Stored data remains unchanged');
+  assert.ok(env.document.getElementById('storageWarning'),'Storage failure is visible');
 });
