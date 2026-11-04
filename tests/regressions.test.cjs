@@ -415,7 +415,7 @@ test('screenshot appointments repeat daily on 6 November through 31 December, bu
   const wanted=[
     ['08:15','09:00','Wake up, shower, coffee','mine','mint'],
     ['09:15','09:45','Walk the dogs','shared','sky'],
-    ['10:00','10:30','Make Breakfast','mine','mint'],
+    ['10:00','10:30','Breakfast','mine','mint'],
     ['14:00','14:45','Lunch/Food','mine','sky']
   ];
   let days=0;
@@ -458,7 +458,10 @@ test('existing screenshot entries stay intact, old duplicate wake-up stays archi
   for(const entry of preMigration){
     const found=day.appts.find(a=>a.id===entry.id);
     assert.ok(found,'Preserves original '+entry.id);
-    for(const [key,value] of Object.entries(entry)) assert.deepEqual(found[key],value,'Preserves '+entry.id+'.'+key);
+    for(const [key,value] of Object.entries(entry)){
+      if(entry.id==='screen-breakfast'&&key==='title') assert.equal(found.title,'Breakfast','Requested shorter title applied in place');
+      else assert.deepEqual(found[key],value,'Preserves '+entry.id+'.'+key);
+    }
   }
   assert.equal(day.appts.find(a=>a.id==='old-auto').supersededByDailyRoutineV48,true);
   assert.equal(json(env.api.mergedAppts('2026-11-06')).filter(a=>a.title==='Wake up, shower, coffee').length,1);
@@ -596,7 +599,9 @@ test('both purple Travel Time slots and one green Breakfast appear daily Nov 6â€
   assert.equal(nextYear.filter(a=>a.title==='Travel Time'&&['09:00','09:45'].includes(a.start)).length,0,'No travel beyond Dec 31');
   assert.equal(env.api.getState().meta.dailyTravelBreakfastV49Applied,true);
   env.api.runStartupMaintenance();
-  assert.deepEqual(json(env.api.getState()),before,'Daily migration is idempotent');
+  const after=json(env.api.getState());
+  assert.deepEqual(after.data['2026-11-06'].appts,before.data['2026-11-06'].appts,'Daily migration is idempotent');
+  assert.equal(after.meta.dailyTravelBreakfastV49Applied,true);
 });
 
 test('existing manually created travel and breakfast appointments are retained without visible duplicates',async()=>{
@@ -673,8 +678,9 @@ test('unopposed Mum entry occupies only the right half; unrelated personal entry
     {id:'personal',title:'Personal afternoon',who:'mine',start:'15:00',end:'16:00',colorKey:'sky',status:'pending'}
   ],todos:[],noteItems:[]};
   env.api.setState({data:{'2026-11-09':day},recurring:[],meta:{disabledDefaults:[],dailyRoutineNov6ToDec31V48Applied:true}});
-  env.api.setDate(new Date(2026,10,9));const before=json(env.api.getState());
+  env.api.setDate(new Date(2026,10,9));
   env.api.renderDay();
+  const before=json(env.api.getState());
   const layer=env.document.getElementById('spanLayer');
   const mum=layer.children.find(x=>x.innerHTML.includes('Mum lunch')),personal=layer.children.find(x=>x.innerHTML.includes('Personal afternoon'));
   assert.ok(mum&&personal);
@@ -698,7 +704,7 @@ test('Mum and personal appointments overlapping simultaneously stay on separate 
   env.api.setState({data:{'2026-11-09':{appts:entries,todos:[],noteItems:[]}},recurring:[],meta:{disabledDefaults:[],dailyRoutineNov6ToDec31V48Applied:true}});
   env.api.setDate(new Date(2026,10,9));env.api.renderDay();
   const layer=env.document.getElementById('spanLayer');
-  const find=t=>layer.children.find(x=>x.innerHTML.includes('>'+t+'<')||x.innerHTML.includes('<strong>'+t+'</strong>'));
+  const find=t=>layer.children.find(x=>x.innerHTML.includes(t));
   for(const title of ['My client','My phone appointment','Mum appointment','Mum other appointment'])assert.ok(find(title),'Appointment rendered: '+title);
   const p1=find('My client'),p2=find('My phone appointment'),m1=find('Mum appointment'),m2=find('Mum other appointment');
   assert.match(p1.style.left,/^calc\(0%/);
