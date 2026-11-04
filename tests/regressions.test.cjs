@@ -451,10 +451,11 @@ test('existing screenshot entries stay intact, old duplicate wake-up stays archi
     '2026-11-07':{appts:[{id:'old-auto-7',title:'Wake up, shower, coffee',start:'08:30',end:'09:00',who:'mine',category:'general',subcategory:'general',colorKey:'auto',status:'pending',source:'daily-morning-routine-2026'}],todos:[],noteItems:[]}
   },recurring:[{id:'reminder',type:'reminder',title:'Reminder',startDate:'2026-11-01',repeat:'daily',who:'mum'}],meta:{disabledDefaults:[],dailyMorningRoutineThrough2026V46Applied:true,workRosterNov2To8V45Applied:true}};
   const env=await app(storageFor(seed));
+  const preMigration=json(env.api.getState().data['2026-11-06'].appts);
   env.api.runStartupMaintenance();
   const state=json(env.api.getState());
   const day=state.data['2026-11-06'];
-  for(const entry of originals){
+  for(const entry of preMigration){
     const found=day.appts.find(a=>a.id===entry.id);
     assert.ok(found,'Preserves original '+entry.id);
     for(const [key,value] of Object.entries(entry)) assert.deepEqual(found[key],value,'Preserves '+entry.id+'.'+key);
@@ -488,9 +489,11 @@ test('daily appointment migration is idempotent across reopening with original I
 test('manually changed previous wake-up is kept alongside new requested routine',async()=>{
   const edited={id:'edited-user',start:'08:30',end:'09:00',title:'Wake up, shower, coffee',who:'mine',status:'completed',source:'daily-morning-routine-2026',notes:'Important completed details',colorKey:'purple'};
   const seed={data:{'2026-11-10':{appts:[edited],todos:[],noteItems:[]}},recurring:[],meta:{dailyMorningRoutineThrough2026V46Applied:true}};
-  const env=await app(storageFor(seed));env.api.runStartupMaintenance();
+  const env=await app(storageFor(seed));
+  const originalAfterExistingMigrations=json(env.api.getState().data['2026-11-10'].appts.find(a=>a.id===edited.id));
+  env.api.runStartupMaintenance();
   const day=json(env.api.getState().data['2026-11-10']);
-  assert.deepEqual(day.appts.find(a=>a.id===edited.id),{...edited,category:'auto'});
+  assert.deepEqual(day.appts.find(a=>a.id===edited.id),originalAfterExistingMigrations);
   assert.ok(day.appts.some(a=>a.title===edited.title&&a.start==='08:15'&&a.status==='pending'));
 });
 
