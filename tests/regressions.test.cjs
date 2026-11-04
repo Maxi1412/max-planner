@@ -172,7 +172,7 @@ test('editing generated defaults produces a real appointment rather than keeping
 test('day view includes early imported appointments and late entries',async()=>{
   const env=await app();env.api.setState({data:{'2026-10-21':{appts:[{id:'early',title:'Early event',start:'02:00',end:'03:00',who:'mum'},{id:'late',title:'Late event',start:'23:00',end:'23:45',who:'mine'}],todos:[],noteItems:[]}},recurring:[],meta:{disabledDefaults:[]}});
   env.api.setDate(new Date(2026,9,21));env.api.renderDay();
-  const rows=env.elements.get('slots').children.filter(x=>x.className==='slot');assert.equal(rows.length,22);
+  const rows=env.elements.get('slots').children.filter(x=>x.classList.contains('slot'));assert.equal(rows.length,22);
   assert.ok(rows[0].children[0].innerHTML.includes('02:00'));assert.ok(rows.at(-1).children[0].innerHTML.includes('23:00'));
 });
 test('service worker leaves Google requests and other PWAs alone, and removes only old Planner caches',async()=>{
@@ -506,4 +506,66 @@ test('routine migration rolls back in-memory data if local device storage fails'
   assert.deepEqual(json(env.api.getState()),before,'In-memory planner retains original entries');
   assert.equal(JSON.parse(env.localStorage.getItem('max-planner-v1'))['2026-11-06'].appts[0].start,'08:30','Stored data remains unchanged');
   assert.ok(env.document.getElementById('storageWarning'),'Storage failure is visible');
+});
+
+
+test('day view shades the full 11:00–14:00 client-hours rows on every day without adding appointments',async()=>{
+  const env=await app();
+  const safeDay=()=>({appts:[],todos:[],noteItems:[],recurringHidden:{},recurringStatus:{},defaultStatus:{},workSupportSuppressed:{}});
+  const fixture={
+    data:{'2026-11-06':safeDay(),'2027-01-20':safeDay()},
+    recurring:[],
+    meta:{disabledDefaults:[],dailyRoutineNov6ToDec31V48Applied:true}
+  };
+  env.api.setState(json(fixture));
+  for(const day of [new Date(2026,10,6),new Date(2027,0,20)]){
+    env.api.setDate(day);
+    const before=json(env.api.getState());
+    env.api.renderDay();
+    const rows=env.document.getElementById('slots').children.filter(x=>x.classList.contains('slot'));
+    assert.ok(rows.length>=14,'Day view includes 11:00 through 14:00');
+    for(const h of [8,9,10,11,12,13,14,15]){
+      const row=rows.find(x=>x.children[0]?.innerHTML.includes(String(h).padStart(2,'0')+':00'));
+      assert.ok(row,'Hour '+h+' exists');
+      assert.equal(row.classList.contains('clientHours'),h>=11&&h<14,'Only client hours shaded: '+h);
+      assert.equal(row.classList.contains('clientHoursStart'),h===11,'Top boundary');
+      assert.equal(row.classList.contains('clientHoursEnd'),h===13,'Bottom boundary');
+      assert.equal(typeof row.children[0]?.onclick,'function','Time column still adds appointments');
+      if(h>=11&&h<14)assert.equal(typeof row.children[1]?.children.find(x=>x.className==='addslot')?.onclick,'function','Empty client hour still allows booking');
+    }
+    assert.deepEqual(json(env.api.getState()),before,'Background-only feature does not change planner data');
+  }
+  assert.match(html,/\.slot\.clientHours\s*\{\s*background:\s*var\(--client-hours-bg\)/,'Whole row has grey background');
+  assert.match(html,/--client-hours-bg:#e3e8ef/,'Light mode grey available');
+  assert.match(html,/--client-hours-bg:#303842/,'Dark mode grey available');
+});
+
+test('overlapping coloured client appointments stay as normal tappable cards above the grey background',async()=>{
+  const env=await app();
+  const entries=[
+    {id:'client-1',title:'Pick up Folder Kornelia',start:'11:00',end:'11:30',who:'other',category:'general',subcategory:'general',colorKey:'purple',status:'pending',notes:''},
+    {id:'client-2',title:'See Clients/ Work',start:'11:00',end:'14:00',who:'work',category:'work',subcategory:'shift',colorKey:'slate',status:'pending',notes:''}
+  ];
+  const fixture={
+    data:{'2026-11-06':{appts:entries,todos:[],noteItems:[],recurringHidden:{},recurringStatus:{},defaultStatus:{},workSupportSuppressed:{}}},
+    recurring:[],meta:{disabledDefaults:[],dailyRoutineNov6ToDec31V48Applied:true}
+  };
+  env.api.setState(json(fixture));
+  env.api.setDate(new Date(2026,10,6));
+  const before=json(env.api.getState());
+  env.api.renderDay();
+  const children=env.document.getElementById('slots').children;
+  const rows=children.filter(x=>x.classList.contains('slot'));
+  const row=rows.find(x=>x.children[0]?.innerHTML.includes('11:00'));
+  assert.ok(row.classList.contains('clientHours'),'Time beneath appointments is grey');
+  const layer=children.find(x=>x.id==='spanLayer');
+  assert.ok(layer,'Existing overlapping appointment layer is still present');
+  const clientCards=layer.children.filter(x=>/Pick up Folder Kornelia|See Clients\/ Work/.test(x.innerHTML));
+  assert.equal(clientCards.length,2,'Both requested client appointments remain on top');
+  assert.ok(clientCards.some(x=>x.className.includes('color-purple')),'First appointment retains original purple colour');
+  assert.ok(clientCards.some(x=>x.className.includes('color-slate')),'Second appointment retains original slate colour');
+  assert.ok(clientCards.every(x=>x.className.includes('appt span')),'Normal appointment cards are unchanged');
+  assert.ok(clientCards.every(x=>x.listeners.pointerdown && x.listeners.pointerup),'Appointments remain interactive');
+  assert.notEqual(clientCards[0].style.left,clientCards[1].style.left,'Overlaps remain in two columns');
+  assert.deepEqual(json(env.api.getState()),before,'Viewing client hours makes no data changes');
 });

@@ -2,6 +2,14 @@
 
 Phone-first calendar PWA for Max and Mum. Published from `main` through GitHub Pages.
 
+## PWA 1.20.8 — visual client hours (every day)
+
+- Shade the full-width day-view time rows between 11:00 and 14:00 in light grey, with a darker suitable shade in dark mode.
+- The grey area is **background only**, not an appointment. Existing hour labels, add buttons, scrolling, overlap layout, and user interactions are unchanged.
+- Any appointments booked within those hours keep their original category colours and ordinary placement, including overlapping side-by-side appointments.
+- There are no data migrations, edits to appointments, or new scheduled records; it applies to every calendar day, including future dates.
+- PWA shell cache is updated so the new styling reaches installed devices.
+
 ## PWA 1.20.7 — daily appointments from 6 Nov through 31 Dec 2026
 
 - Copy the four highlighted appointments on Friday 6 November to every day until 31 December 2026 inclusive: **08:15–09:00 Wake up, shower, coffee** (green), **09:15–09:45 Walk the dogs** (Shared / family, blue), **10:00–10:30 Make Breakfast** (green), and **14:00–14:45 Lunch/Food** (blue).
