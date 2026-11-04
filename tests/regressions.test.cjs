@@ -707,10 +707,8 @@ test('Mum and personal appointments overlapping simultaneously stay on separate 
   const find=t=>layer.children.find(x=>x.innerHTML.includes(t));
   for(const title of ['My client','My phone appointment','Mum appointment','Mum other appointment'])assert.ok(find(title),'Appointment rendered: '+title);
   const p1=find('My client'),p2=find('My phone appointment'),m1=find('Mum appointment'),m2=find('Mum other appointment');
-  assert.match(p1.style.left,/^calc\(0%/);
-  assert.match(p2.style.left,/^calc\(25%/);
-  assert.match(m1.style.left,/^calc\(50%/);
-  assert.match(m2.style.left,/^calc\(75%/);
+  assert.deepEqual([p1.style.left,p2.style.left].sort(),['calc(0% + 0px)','calc(25% + 2px)'],'Both personal appointments stay entirely left');
+  assert.deepEqual([m1.style.left,m2.style.left].sort(),['calc(50% + 0px)','calc(75% + 2px)'],'Both Mum appointments stay entirely right');
   assert.match(p1.style.width,/calc\(25%/);
   assert.match(m1.style.width,/calc\(25%/);
   assert.ok(m1.className.includes('mumAppointment')&&m2.className.includes('mumAppointment'));
