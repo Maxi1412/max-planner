@@ -2,6 +2,15 @@
 
 Phone-first calendar PWA for Max and Mum. Published from `main` through GitHub Pages.
 
+## PWA 1.20.9 — daily Travel Time, Breakfast, and Mum's right-hand lane
+
+- Every day **6 November–31 December 2026** gets two purple 15-minute **Travel Time** appointments: **09:00–09:15** and **09:45–10:00**. Exact matching manual records are retained and recoloured purple, not duplicated.
+- The **10:00–10:30** appointment is **Breakfast**, in green, rather than **Make Breakfast**. An existing Breakfast entry takes priority; otherwise the newer Make Breakfast entry is renamed in place, retaining its identifier and all personal details. Redundant records are **preserved in storage but hidden** rather than erased, preventing lost notes or status history. The older virtual default Breakfast is automatically suppressed by the corresponding real entry.
+- All appointments assigned to **Mum**, whether created by the user, imported from Google, or recurring, use the same dark-red text and pale red background as her important reminders across day, week and month.
+- On the **Day** timeline, Mum's appointments always occupy the **right half** of the appointment area; non-Mum appointments occupy the left half when overlapping her. Ordinary appointments remain full-width when there is no Mum overlap. Multiple appointments on the same side share that side without colliding.
+- The grey 11:00–14:00 client hours and normal appointment editing, notes, backup, recurrence and calendar sync remain unchanged.
+- A safety snapshot precedes the first 1.20.9 upgrade; the migration is staged and rolled back if saving fails. No new appointments are created after 31 December 2026.
+
 ## PWA 1.20.8 — visual client hours (every day)
 
 - Shade the full-width day-view time rows between 11:00 and 14:00 in light grey, with a darker suitable shade in dark mode.

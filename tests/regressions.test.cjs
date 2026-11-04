@@ -53,7 +53,7 @@ function environment(values={},fetcher=async()=>{throw new Error('Unexpected net
 }
 async function app(values={},fetcher){
   const env=environment(values,fetcher);
-  const expose=`\nreturn {getState:()=>({data,recurring,meta}),setState:value=>{data=value.data;recurring=value.recurring||[];meta=value.meta||{};},runStartupMaintenance,fetchGoogleCalendarEvents,applyGoogleCalendarEvents,saveAppointmentFromModal,openAppointmentModal,googleEventToAppointment,uploadDriveBackup,manualDriveBackup,ensureDriveTokenClient,driveBackupStatusInfo,setDriveToken:()=>persistDriveSessionToken('test-token',3600),setDate:value=>{current=value;},autoRolloverPendingTodos,mergedAppts,renderDay,buildPrintWeek};`;
+  const expose=`\nreturn {getState:()=>({data,recurring,meta}),setState:value=>{data=value.data;recurring=value.recurring||[];meta=value.meta||{};},runStartupMaintenance,fetchGoogleCalendarEvents,applyGoogleCalendarEvents,saveAppointmentFromModal,openAppointmentModal,googleEventToAppointment,uploadDriveBackup,manualDriveBackup,ensureDriveTokenClient,driveBackupStatusInfo,setDriveToken:()=>persistDriveSessionToken('test-token',3600),setDate:value=>{current=value;},autoRolloverPendingTodos,mergedAppts,appointmentVisualClass,renderDay,renderWeek,renderMonth,buildPrintWeek};`;
   env.api=await vm.runInContext('(async()=>{'+main+expose+'})()',env.context);return env;
 }
 const existing=()=>({data:{'2026-10-12':{appts:[{id:'manual',title:'Appointment entered by Max',start:'11:00',end:'12:00',who:'mum',category:'health',notes:'Keep these details',status:'completed',flag:true,expenseLink:{id:'finance-1',amount:25},customReference:'from-user'},{id:'gpt',title:'Record entered through GPT',start:'18:00',end:'18:45',who:'work',notes:'Keep this too',status:'pending'}],todos:[{id:'todo-1',text:'User task',status:'pending'}],noteItems:[{id:'note-1',text:'User note'}]}},recurring:[{id:'custom-recurring',type:'reminder',title:'User recurring reminder',startDate:'2026-10-01',repeat:'weekly',who:'mum'}],meta:{disabledDefaults:['d1']}});
@@ -415,7 +415,7 @@ test('screenshot appointments repeat daily on 6 November through 31 December, bu
   const wanted=[
     ['08:15','09:00','Wake up, shower, coffee','mine','mint'],
     ['09:15','09:45','Walk the dogs','shared','sky'],
-    ['10:00','10:30','Make Breakfast','mine','mint'],
+    ['10:00','10:30','Breakfast','mine','mint'],
     ['14:00','14:45','Lunch/Food','mine','sky']
   ];
   let days=0;
@@ -458,7 +458,10 @@ test('existing screenshot entries stay intact, old duplicate wake-up stays archi
   for(const entry of preMigration){
     const found=day.appts.find(a=>a.id===entry.id);
     assert.ok(found,'Preserves original '+entry.id);
-    for(const [key,value] of Object.entries(entry)) assert.deepEqual(found[key],value,'Preserves '+entry.id+'.'+key);
+    for(const [key,value] of Object.entries(entry)){
+      if(entry.id==='screen-breakfast'&&key==='title') assert.equal(found.title,'Breakfast','Requested shorter title applied in place');
+      else assert.deepEqual(found[key],value,'Preserves '+entry.id+'.'+key);
+    }
   }
   assert.equal(day.appts.find(a=>a.id==='old-auto').supersededByDailyRoutineV48,true);
   assert.equal(json(env.api.mergedAppts('2026-11-06')).filter(a=>a.title==='Wake up, shower, coffee').length,1);
@@ -568,4 +571,159 @@ test('overlapping coloured client appointments stay as normal tappable cards abo
   assert.ok(clientCards.every(x=>x.listeners.pointerdown && x.listeners.pointerup),'Appointments remain interactive');
   assert.notEqual(clientCards[0].style.left,clientCards[1].style.left,'Overlaps remain in two columns');
   assert.deepEqual(json(env.api.getState()),before,'Viewing client hours makes no data changes');
+});
+
+
+test('both purple Travel Time slots and one green Breakfast appear daily Nov 6–Dec 31 only',async()=>{
+  const env=await app();
+  env.api.runStartupMaintenance();
+  const before=json(env.api.getState());
+  let dayCount=0;
+  for(let date=new Date(2026,10,6);date<=new Date(2026,11,31);date.setDate(date.getDate()+1)){
+    dayCount++;
+    const key=[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
+    const visible=json(env.api.mergedAppts(key));
+    for(const [start,end] of [['09:00','09:15'],['09:45','10:00']]){
+      const matches=visible.filter(a=>a.title==='Travel Time'&&a.start===start&&a.end===end);
+      assert.equal(matches.length,1,key+' has exactly one Travel Time '+start);
+      assert.equal(matches[0].colorKey,'purple');
+      assert.equal(matches[0].who,'other');
+    }
+    const breakfast=visible.filter(a=>a.title==='Breakfast'&&a.start==='10:00'&&a.end==='10:30');
+    assert.equal(breakfast.length,1,key+' has one Breakfast');
+    assert.equal(breakfast[0].colorKey,'mint',key+' Breakfast stays green');
+    assert.equal(visible.filter(a=>a.title==='Make Breakfast'&&a.start==='10:00').length,0,key+' no old Make Breakfast');
+  }
+  assert.equal(dayCount,56);
+  const nextYear=json(env.api.mergedAppts('2027-01-01'));
+  assert.equal(nextYear.filter(a=>a.title==='Travel Time'&&['09:00','09:45'].includes(a.start)).length,0,'No travel beyond Dec 31');
+  assert.equal(env.api.getState().meta.dailyTravelBreakfastV49Applied,true);
+  env.api.runStartupMaintenance();
+  const after=json(env.api.getState());
+  assert.deepEqual(after.data['2026-11-06'].appts,before.data['2026-11-06'].appts,'Daily migration is idempotent');
+  assert.equal(after.meta.dailyTravelBreakfastV49Applied,true);
+});
+
+test('existing manually created travel and breakfast appointments are retained without visible duplicates',async()=>{
+  const records=[
+    {id:'original-breakfast',title:'Breakfast',start:'10:00',end:'10:30',who:'mine',colorKey:'sky',status:'completed',notes:'Favorite meal',expenseLink:{id:'link-1'}},
+    {id:'newer-make-breakfast',title:'Make Breakfast',start:'10:00',end:'10:30',who:'mine',colorKey:'mint',status:'pending',source:'screenshot-daily-routine-2026-v48'},
+    {id:'first-travel',title:'Travel Time',start:'09:00',end:'09:15',who:'other',colorKey:'lavender',notes:'Car journey',status:'completed'},
+    {id:'duplicate-travel',title:'Travel Time',start:'09:00',end:'09:15',who:'other',colorKey:'sky',status:'pending'},
+    {id:'second-travel',title:'Travel Time',start:'09:45',end:'10:00',who:'other',colorKey:'purple',status:'pending'},
+    {id:'personal-appointment',title:'My appointment',start:'12:30',end:'13:30',who:'mine',status:'completed',notes:'Private notes'}
+  ];
+  const seed={data:{'2026-11-06':{appts:records,todos:[{id:'todo',text:'Retain to-do'}],noteItems:[{id:'n',text:'Retain note'}]}},recurring:[{id:'rec',type:'reminder',title:'Mum reminder',who:'mum',startDate:'2026-11-01',repeat:'weekly'}],meta:{dailyRoutineNov6ToDec31V48Applied:true,dailyMorningRoutineThrough2026V46Applied:true}};
+  const env=await app(storageFor(seed));
+  const originals=json(env.api.getState().data['2026-11-06'].appts);
+  env.api.runStartupMaintenance();
+  const day=json(env.api.getState().data['2026-11-06']),visible=json(env.api.mergedAppts('2026-11-06'));
+  assert.equal(day.appts.filter(a=>records.some(r=>r.id===a.id)).length,records.length,'All source records are kept');
+  assert.equal(visible.filter(a=>a.title==='Breakfast'&&a.start==='10:00').length,1);
+  assert.equal(visible.filter(a=>a.title==='Make Breakfast'&&a.start==='10:00').length,0);
+  assert.equal(day.appts.find(a=>a.id==='newer-make-breakfast').supersededByRoutineV49,true);
+  const chosen=day.appts.find(a=>a.id==='original-breakfast');
+  assert.equal(chosen.status,'completed');
+  assert.equal(chosen.notes,'Favorite meal');
+  assert.deepEqual(chosen.expenseLink,{id:'link-1'});
+  assert.equal(chosen.colorKey,'mint','Standard green colour');
+  const firstTravel=day.appts.find(a=>a.id==='first-travel');
+  assert.equal(firstTravel.notes,'Car journey');
+  assert.equal(firstTravel.status,'completed');
+  assert.equal(firstTravel.colorKey,'purple');
+  assert.equal(day.appts.find(a=>a.id==='duplicate-travel').supersededByRoutineV49,true);
+  assert.equal(visible.filter(a=>a.title==='Travel Time'&&a.start==='09:00').length,1);
+  assert.equal(visible.filter(a=>a.title==='Travel Time'&&a.start==='09:45').length,1);
+  assert.deepEqual(day.appts.find(a=>a.id==='personal-appointment'),originals.find(a=>a.id==='personal-appointment'));
+  assert.equal(day.todos[0].text,'Retain to-do');assert.equal(day.noteItems[0].text,'Retain note');
+  assert.equal(json(env.api.getState().recurring)[0].id,'rec');
+});
+
+test('newer Make Breakfast is renamed in place when no other Breakfast is stored',async()=>{
+  const existingBreakfast={id:'v48-breakfast',title:'Make Breakfast',start:'10:00',end:'10:30',who:'mine',colorKey:'mint',status:'completed',notes:'Preserve this note',source:'screenshot-daily-routine-2026-v48'};
+  const seed={data:{'2026-11-06':{appts:[existingBreakfast],todos:[],noteItems:[]}},recurring:[],meta:{dailyRoutineNov6ToDec31V48Applied:true,dailyMorningRoutineThrough2026V46Applied:true}};
+  const env=await app(storageFor(seed));
+  env.api.runStartupMaintenance();
+  const day=json(env.api.getState().data['2026-11-06']);
+  const found=day.appts.find(a=>a.id==='v48-breakfast');
+  assert.equal(found.title,'Breakfast');assert.equal(found.notes,existingBreakfast.notes);assert.equal(found.status,'completed');
+  assert.equal(day.appts.filter(a=>a.title==='Breakfast'&&a.start==='10:00').length,1);
+  assert.equal(json(env.api.mergedAppts('2026-11-06')).filter(a=>a.title==='Breakfast'&&a.start==='10:00').length,1,'Legacy virtual default stays suppressed');
+});
+
+test("Mum's appointments always have the exact reminder red regardless of owner-specified category and colour",async()=>{
+  const env=await app();
+  for(const config of [
+    {who:'mum',title:'Mum lunch',category:'meal',colorKey:'mint'},
+    {who:'mum',title:'Mum doctor',category:'health',colorKey:'purple'},
+    {who:'mum',title:'Google imported event',category:'general',colorKey:'coral',source:'google-calendar-mum'},
+    {who:'mum',title:'Mum admin',category:'admin',colorKey:'teal'},
+    {who:'mum',title:'Recurring appointment',category:'meal',colorKey:'orange',isRecurring:true},
+  ]){
+    const cls=env.api.appointmentVisualClass(config);
+    assert.match(cls,/\bmumAppointment\b/,config.title+' gets Mum colour class');
+  }
+  assert.doesNotMatch(env.api.appointmentVisualClass({who:'mine',title:'Lunch with Mum',category:'meal',colorKey:'mint'}),/\bmumAppointment\b/);
+  const colourRule='.preview.mumAppointment,.weekAppt.mumAppointment,.appt.mumAppointment';
+  const ruleIndex=html.indexOf(colourRule);
+  assert.ok(ruleIndex>html.indexOf('.appt.color-slate'),'Mum colour rule comes after all category and palette colours');
+  assert.match(html.slice(ruleIndex,ruleIndex+190),/background:var\(--pal-coral-bg\);color:var\(--mum\)/,'Colour matches the recurring Mum note');
+  assert.match(html,/\.noteItem\.noteMum,.autoNote\.noteMum\{background:var\(--pal-coral-bg\);color:var\(--mum\)/,'Mum reminders use same palette');
+});
+
+test('unopposed Mum entry occupies only the right half; unrelated personal entry stays full width',async()=>{
+  const env=await app();
+  const day={appts:[
+    {id:'mum',title:'Mum lunch',who:'mum',start:'12:00',end:'13:00',colorKey:'mint',category:'meal',status:'pending'},
+    {id:'personal',title:'Personal afternoon',who:'mine',start:'15:00',end:'16:00',colorKey:'sky',status:'pending'}
+  ],todos:[],noteItems:[]};
+  env.api.setState({data:{'2026-11-09':day},recurring:[],meta:{disabledDefaults:[],dailyRoutineNov6ToDec31V48Applied:true}});
+  env.api.setDate(new Date(2026,10,9));
+  env.api.renderDay();
+  const before=json(env.api.getState());
+  const layer=env.document.getElementById('spanLayer');
+  const mum=layer.children.find(x=>x.innerHTML.includes('Mum lunch')),personal=layer.children.find(x=>x.innerHTML.includes('Personal afternoon'));
+  assert.ok(mum&&personal);
+  assert.equal(mum.style.left,'calc(50% + 0px)');
+  assert.equal(mum.style.width,'calc(50% - 0px)');
+  assert.ok(mum.className.includes('mumAppointment'),'Mum dark red style applied');
+  assert.equal(personal.style.left,'calc(0% + 0px)');
+  assert.equal(personal.style.width,'calc(100% - 0px)','Non-overlapping personal appointment remains full width');
+  assert.equal(typeof mum.listeners.pointerdown==='function',true,'Mum card remains clickable');
+  assert.deepEqual(json(env.api.getState()),before,'Right-hand lane adds no storage changes');
+});
+
+test('Mum and personal appointments overlapping simultaneously stay on separate left and right sides',async()=>{
+  const env=await app();
+  const entries=[
+    {id:'p1',who:'mine',title:'My client',start:'11:00',end:'12:00',colorKey:'sky'},
+    {id:'p2',who:'work',title:'My phone appointment',start:'11:00',end:'11:30',colorKey:'purple',subcategory:'meeting'},
+    {id:'m1',who:'mum',title:'Mum appointment',start:'11:00',end:'12:00',colorKey:'sky',category:'general'},
+    {id:'m2',who:'mum',title:'Mum other appointment',start:'11:00',end:'11:30',colorKey:'mint',category:'meal'}
+  ];
+  env.api.setState({data:{'2026-11-09':{appts:entries,todos:[],noteItems:[]}},recurring:[],meta:{disabledDefaults:[],dailyRoutineNov6ToDec31V48Applied:true}});
+  env.api.setDate(new Date(2026,10,9));env.api.renderDay();
+  const layer=env.document.getElementById('spanLayer');
+  const find=t=>layer.children.find(x=>x.innerHTML.includes(t));
+  for(const title of ['My client','My phone appointment','Mum appointment','Mum other appointment'])assert.ok(find(title),'Appointment rendered: '+title);
+  const p1=find('My client'),p2=find('My phone appointment'),m1=find('Mum appointment'),m2=find('Mum other appointment');
+  assert.deepEqual([p1.style.left,p2.style.left].sort(),['calc(0% + 0px)','calc(25% + 2px)'],'Both personal appointments stay entirely left');
+  assert.deepEqual([m1.style.left,m2.style.left].sort(),['calc(50% + 0px)','calc(75% + 2px)'],'Both Mum appointments stay entirely right');
+  assert.match(p1.style.width,/calc\(25%/);
+  assert.match(m1.style.width,/calc\(25%/);
+  assert.ok(m1.className.includes('mumAppointment')&&m2.className.includes('mumAppointment'));
+  assert.equal(typeof m1.listeners.pointerdown==='function',true);
+});
+
+test('Mum entries without end time appear on the right half and still support tap/long press',async()=>{
+  const env=await app();
+  env.api.setState({data:{'2026-11-09':{appts:[{id:'m-unbounded',title:'Mum quick note',who:'mum',start:'17:00',end:'',colorKey:'blue'}],todos:[],noteItems:[]}},recurring:[],meta:{disabledDefaults:[],dailyRoutineNov6ToDec31V48Applied:true}});
+  env.api.setDate(new Date(2026,10,9));env.api.renderDay();
+  const row=env.document.getElementById('slots').children.find(x=>x.classList.contains('slot')&&x.children[0].innerHTML.includes('17:00'));
+  const mum=row.children[1].children.find(x=>x.innerHTML.includes('Mum quick note'));
+  assert.ok(mum);
+  assert.equal(mum.style.width,'50%');
+  assert.equal(mum.style.marginLeft,'auto');
+  assert.ok(mum.className.includes('mumAppointment'));
+  assert.equal(typeof mum.listeners.pointerdown,'function');
 });
