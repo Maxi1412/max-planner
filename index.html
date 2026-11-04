@@ -1573,6 +1573,8 @@ function renderDay(){
     });
     appts.filter(a=>!isSpanningAppointment(a) && Number((a.start||'0').split(':')[0])===h).forEach(a=>{
       const ap=document.createElement('div');ap.className='appt '+appointmentVisualClass(a)+(a.flag?' flagged':'')+' '+(a.status||'');
+      // Even untimed/short Mum entries remain on the right-hand side.
+      if(a.who==='mum'){ap.style.width='50%';ap.style.marginLeft='auto';}
       const mark=a.flag?'★ ':'';
       const userNote=appointmentUserNote(a);
       ap.innerHTML=`<span class="apptMain"><span class="apptTitle">${mark}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</span><span class="apptTime">${timeRange(a)}</span>${userNote?'<span class="apptNote">'+escapeHtml(userNote)+'</span>':''}${a.expenseLink?'<span class="apptExpense">'+escapeHtml(expenseCalendarLine(a.expenseLink))+'</span>':''}</span>${statusMark(a)}`;
@@ -1609,17 +1611,26 @@ function renderSpanningAppointments(appts,key,slots,hours=VISUAL_HOURS){
   if(group.length)groups.push(group);
 
   const layout=new Map();
-  groups.forEach(items=>{
+  function placeColumns(items,side='full'){
+    if(!items.length) return;
     const colEnds=[];
-    let maxCols=1;
     items.forEach(a=>{
       const s=minutes(a.start),e=minutes(a.end);
       let col=colEnds.findIndex(end=>end<=s);
-      if(col<0){col=colEnds.length;colEnds.push(e);} else colEnds[col]=e;
-      maxCols=Math.max(maxCols,colEnds.length);
-      layout.set(a,{col,cols:0});
+      if(col<0){col=colEnds.length;colEnds.push(e);}else colEnds[col]=e;
+      layout.set(a,{col,cols:0,side});
     });
-    items.forEach(a=>layout.get(a).cols=maxCols);
+    const cols=colEnds.length;
+    items.forEach(a=>layout.get(a).cols=cols);
+  }
+  groups.forEach(items=>{
+    const mum=items.filter(a=>a.who==='mum');
+    if(mum.length){
+      // Mum has a dedicated right-hand lane, even without another appointment.
+      // Personal/client appointments use the left half only when they overlap her.
+      placeColumns(items.filter(a=>a.who!=='mum'),'left');
+      placeColumns(mum,'right');
+    }else placeColumns(items);
   });
 
   const layer=document.createElement('div');
@@ -1631,15 +1642,17 @@ function renderSpanningAppointments(appts,key,slots,hours=VISUAL_HOURS){
     const top=((clippedStart-visualStart)/60)*pxPerHour;
     const duration=clippedEnd-clippedStart;
     const height=Math.max(duration<=15?26:34,(duration/60)*pxPerHour-4);
-    const pos=layout.get(a)||{col:0,cols:1};
+    const pos=layout.get(a)||{col:0,cols:1,side:'full'};
     const gap=4;
     const ap=document.createElement('div');
     ap.className='appt span '+appointmentVisualClass(a)+(a.flag?' flagged':'')+' '+(a.status||'');
     ap.style.top=(top+2)+'px';
     ap.style.height=height+'px';
     ap.style.right='auto';
-    ap.style.left=`calc(${(pos.col/pos.cols)*100}% + ${pos.col?gap/2:0}px)`;
-    ap.style.width=`calc(${100/pos.cols}% - ${pos.cols>1?gap/2:0}px)`;
+    const laneWidth=pos.side==='full'?100:50;
+    const laneStart=pos.side==='right'?50:0;
+    ap.style.left=`calc(${laneStart+(pos.col/pos.cols)*laneWidth}% + ${pos.col?gap/2:0}px)`;
+    ap.style.width=`calc(${laneWidth/pos.cols}% - ${pos.cols>1?gap/2:0}px)`;
     const userNote=appointmentUserNote(a);
     ap.innerHTML=`<span class="spanMain"><strong>${a.flag?'★ ':''}${escapeHtml(a.title)}${appointmentRoleSuffix(a)}</strong><span class="spanDuration">${timeRange(a)}</span>${userNote?'<span class="apptNote">'+escapeHtml(userNote)+'</span>':''}${a.expenseLink?'<span class="apptExpense">'+escapeHtml(expenseCalendarLine(a.expenseLink))+'</span>':''}</span>${statusMark(a)}`;
     attachLongPress(ap,()=>appointmentActions(a,key),()=>editAppointment(a,key));
