@@ -214,6 +214,11 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 .preview.color-purple,.weekAppt.color-purple,.appt.color-purple{background:var(--pal-purple-bg);color:var(--pal-purple);}
 .preview.color-indigo,.weekAppt.color-indigo,.appt.color-indigo{background:var(--pal-indigo-bg);color:var(--pal-indigo);}
 .preview.color-slate,.weekAppt.color-slate,.appt.color-slate{background:var(--pal-slate-bg);color:var(--pal-slate);}
+/* Mum's entries always match the dark-red recurring reminder colour,
+   regardless of manual colour, title/category, or Google Calendar source. */
+.preview.mumAppointment,.weekAppt.mumAppointment,.appt.mumAppointment{
+  background:var(--pal-coral-bg);color:var(--mum);font-weight:800;
+}
 
 .colorPalette{display:flex;flex-wrap:wrap;gap:8px;margin-top:7px;}
 .colorChoice{width:34px;height:34px;border-radius:50%;border:2px solid transparent;padding:0;box-shadow:0 0 0 1px var(--line);}
@@ -633,7 +638,7 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 <script src="./planner-core.js"></script>
 <script src="./planner-safety.js"></script>
 <script type="module">
-try{await PlannerSafety.prepare('PWA 1.20.8');}
+try{await PlannerSafety.prepare('PWA 1.20.9');}
 catch(error){PlannerSafety.showFailure(error.message,{blocking:true});throw error;}
 const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
@@ -654,8 +659,8 @@ const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-1
 const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
 const SAFETY_BACKUP_KEY_V39='max-planner-safety-pre-roster-oct26-nov1-2026';
-const VERSION=48;
-const APP_BUILD='PWA 1.20.8';
+const VERSION=49;
+const APP_BUILD='PWA 1.20.9';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -730,7 +735,7 @@ function resolvedCategory(a){
   return categoryFromSubcategory(sub)||inferAppointmentCategory(a);
 }
 function appointmentVisualClass(a){
-  return 'cat-'+resolvedCategory(a)+' color-'+resolvedColorKey(a);
+  return 'cat-'+resolvedCategory(a)+' color-'+resolvedColorKey(a)+(a?.who==='mum'?' mumAppointment':'');
 }
 function isWorkAppointment(a){
   return a && a.who==='work' && !a.autoWorkSupport && !a.isGeneratedWorkSupport;
@@ -1265,6 +1270,63 @@ function applyDailyRoutineV48(){
   return summary;
 }
 
+
+// Daily 15-minute travel periods and a single, green "Breakfast" appointment,
+// 6 November–31 December 2026. Duplicate records are retained for recovery,
+// but marked as superseded so the planner displays only one at a time.
+const DAILY_TRAVEL_V49=[
+  {start:'09:00',end:'09:15',title:'Travel Time',who:'other',category:'travel',subcategory:'travel',colorKey:'purple'},
+  {start:'09:45',end:'10:00',title:'Travel Time',who:'other',category:'travel',subcategory:'travel',colorKey:'purple'}
+];
+function applyTravelBreakfastV49(){
+  if(meta.dailyTravelBreakfastV49Applied) return {added:0,renamed:0,hidden:0,recolored:0};
+  const summary={added:0,renamed:0,hidden:0,recolored:0};
+  const matching=(a,t)=> !a.supersededByDailyRoutineV48&&!a.supersededByRoutineV49 &&
+    String(a.title||'').trim().toLocaleLowerCase()===t.title.toLocaleLowerCase() &&
+    normalizeTime(a.start)===t.start && normalizeTime(a.end)===t.end;
+  for(let date=parseIso('2026-11-06');date<=parseIso('2026-12-31');date=dateAdd(date,1)){
+    const day=dayData(iso(date));
+    // Prefer an existing user-created Breakfast to preserve its ID, notes and completion.
+    const breakfastMatches=day.appts.filter(a=>!a.supersededByDailyRoutineV48&&!a.supersededByRoutineV49 &&
+      normalizeTime(a.start)==='10:00' && normalizeTime(a.end)==='10:30' &&
+      ['make breakfast','breakfast'].includes(String(a.title||'').trim().toLocaleLowerCase()) && a.who!=='mum');
+    const preferred=breakfastMatches.find(a=>String(a.title||'').trim().toLocaleLowerCase()==='breakfast')||
+      breakfastMatches[0];
+    if(preferred){
+      if(preferred.title!=='Breakfast'){preferred.title='Breakfast';summary.renamed++;}
+      if(preferred.colorKey!=='mint'){preferred.colorKey='mint';summary.recolored++;}
+      for(const duplicate of breakfastMatches){
+        if(duplicate===preferred) continue;
+        duplicate.supersededByRoutineV49=true;
+        summary.hidden++;
+      }
+    }else{
+      day.appts.push({id:uid('a'),start:'10:00',end:'10:30',title:'Breakfast',
+        who:'mine',category:'meal',subcategory:'meal',colorKey:'mint',status:'pending',
+        source:'daily-breakfast-2026-v49'});
+      summary.added++;
+    }
+    for(const template of DAILY_TRAVEL_V49){
+      const matches=day.appts.filter(a=>matching(a,template));
+      if(matches.length){
+        const primary=matches[0];
+        if(primary.colorKey!=='purple'){primary.colorKey='purple';summary.recolored++;}
+        for(const duplicate of matches.slice(1)){
+          duplicate.supersededByRoutineV49=true;
+          summary.hidden++;
+        }
+      }else{
+        day.appts.push({id:uid('a'),...template,status:'pending',
+          source:'daily-travel-2026-v49'});
+        summary.added++;
+      }
+    }
+  }
+  meta.dailyTravelBreakfastV49Applied=true;
+  meta.dailyTravelBreakfastV49Summary=summary;
+  return summary;
+}
+
 // Important job interview confirmed via Calendly for 6 Oct 2026.
 if(!meta.inmoInterviewOct6Applied){
   const dd=dayData('2026-10-06');
@@ -1332,6 +1394,7 @@ function runStartupMaintenance(){
     data=JSON.parse(JSON.stringify(data));
     meta={...meta};
     applyDailyRoutineV48();
+    applyTravelBreakfastV49();
     syncAllWorkSupportBlocks();
     if(!save()){
       data=originalData;meta=originalMeta;
@@ -1384,7 +1447,7 @@ function mergedAppts(key){
     return !dd.appts.some(a=>normalizeTime(a.start)===def.start && a.title===def.title);
   }).map(def=>({...def,id:def.id+'-'+key,defaultId:def.id,isDefault:true,status:dd.defaultStatus[def.id]||'pending'}));
   const rec=recurringForDate(parseIso(key),'appointment').filter(r=>!dd.appts.some(a=>normalizeTime(a.start)===normalizeTime(r.start) && a.title===r.title));
-  const all=dd.appts.filter(a=>!a.supersededByDailyRoutineV48).concat(defs,rec);
+  const all=dd.appts.filter(a=>!a.supersededByDailyRoutineV48&&!a.supersededByRoutineV49).concat(defs,rec);
   const hasWork=all.some(isWorkShiftAppointment);
   if(hasWork){
     const work=all.filter(isWorkShiftAppointment).sort((a,b)=>minutes(a.start)-minutes(b.start))[0];
