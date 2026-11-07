@@ -638,7 +638,7 @@ main{padding:12px;padding-bottom:calc(42px + env(safe-area-inset-bottom,0px));}
 <script src="./planner-core.js"></script>
 <script src="./planner-safety.js"></script>
 <script type="module">
-try{await PlannerSafety.prepare('PWA 1.20.9');}
+try{await PlannerSafety.prepare('PWA 1.20.10');}
 catch(error){PlannerSafety.showFailure(error.message,{blocking:true});throw error;}
 const DATA_KEY='max-planner-v1';
 const RECUR_KEY='max-planner-recurring-v2';
@@ -659,8 +659,8 @@ const SAFETY_BACKUP_KEY_V32='max-planner-safety-pre-separate-drive-client-2026-1
 const SAFETY_BACKUP_KEY_V35='max-planner-safety-pre-manual-mum-google-login-2026-10-18';
 const SAFETY_BACKUP_KEY_V36='max-planner-safety-pre-samsung-ics-import-2026-10-18';
 const SAFETY_BACKUP_KEY_V39='max-planner-safety-pre-roster-oct26-nov1-2026';
-const VERSION=49;
-const APP_BUILD='PWA 1.20.9';
+const VERSION=50;
+const APP_BUILD='PWA 1.20.10';
 const VISUAL_HOURS=[]; for(let h=8;h<=21;h++) VISUAL_HOURS.push(h);
 const TIME_OPTIONS=[''];
 for(let h=0;h<=23;h++) for(const m of [0,15,30,45]) TIME_OPTIONS.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
@@ -1327,6 +1327,41 @@ function applyTravelBreakfastV49(){
   return summary;
 }
 
+
+// Work shifts confirmed from the two weekly roster screenshots (9–22 Nov 2026).
+// User's other appointments and previously edited/cancelled shifts take precedence.
+const CONFIRMED_WORK_SHIFTS_NOV9_TO22_V50=[
+  '2026-11-10','2026-11-11','2026-11-13','2026-11-14','2026-11-15',
+  '2026-11-16','2026-11-17','2026-11-18','2026-11-20','2026-11-21','2026-11-22'
+];
+function applyWorkRosterNov9To22V50(){
+  if(meta.workRosterNov9To22V50Applied) return {added:0,skipped:0};
+  const summary={added:0,skipped:0};
+  for(const key of CONFIRMED_WORK_SHIFTS_NOV9_TO22_V50){
+    const day=dayData(key);
+    const conflicts=day.appts.some(a=>{
+      if(a?.who!=='work'||a.autoWorkSupport||a.isGeneratedWorkSupport) return false;
+      const label=String(a.title||'').trim();
+      const isShift=a.subcategory==='shift'||/^work$/i.test(label)||/\b(waiter|work shift|shift)\b/i.test(label);
+      if(!isShift) return false;
+      const start=minutes(normalizeTime(a.start)),end=minutes(normalizeTime(a.end));
+      // Respect manually cancelled same-time shifts, and already scheduled shifts
+      // that overlap the 19:00–23:00 roster; don't create competing bookings.
+      return (start===19*60&&end===23*60)||(a.status!=='cancelled'&&start<23*60&&end>19*60);
+    });
+    if(conflicts){summary.skipped++;continue;}
+    day.appts.push({
+      id:uid('a'),start:'19:00',end:'23:00',title:'Work',
+      who:'work',category:'work',subcategory:'shift',colorKey:'auto',
+      status:'pending',source:'confirmed-waiter-roster-nov9-to22-2026'
+    });
+    summary.added++;
+  }
+  meta.workRosterNov9To22V50Applied=true;
+  meta.workRosterNov9To22V50Summary=summary;
+  return summary;
+}
+
 // Important job interview confirmed via Calendly for 6 Oct 2026.
 if(!meta.inmoInterviewOct6Applied){
   const dd=dayData('2026-10-06');
@@ -1395,6 +1430,7 @@ function runStartupMaintenance(){
     meta={...meta};
     applyDailyRoutineV48();
     applyTravelBreakfastV49();
+    applyWorkRosterNov9To22V50();
     syncAllWorkSupportBlocks();
     if(!save()){
       data=originalData;meta=originalMeta;

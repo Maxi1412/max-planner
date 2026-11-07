@@ -2,6 +2,17 @@
 
 Phone-first calendar PWA for Max and Mum. Published from `main` through GitHub Pages.
 
+## PWA 1.20.10 — waiter shifts 9–22 November 2026
+
+- The two user-provided weekly roster screenshots confirm **11 waiter shifts**, each from **19:00–23:00**:
+  - **9–15 Nov:** Tuesday 10, Wednesday 11, Friday 13, Saturday 14 and Sunday 15 (off dates shown: Monday 9 and Thursday 12).
+  - **16–22 Nov:** Monday 16, Tuesday 17, Wednesday 18, Friday 20, Saturday 21 and Sunday 22 (off date shown: Thursday 19).
+- A staged, one-time, device-local upgrade adds **Work** appointments for those dates using the existing `who: 'work'`, `category: 'work'`, `subcategory: 'shift'` format. These are normal editable appointments and enable the planner's existing automatic **18:00–18:30 get ready** and **18:30–19:00 drive to work** support blocks.
+- If an exact shift already exists, or the day has an overlapping work shift, no duplicate is added and the previously entered shift is preserved. A cancelled shift at exactly 19:00–23:00 is also respected; no replacement is forced.
+- Empty days in the screenshots are **not** changed into 'OFF' entries, and existing appointments on those dates are never removed. Other dates and personal notes, tasks, recurrence and synced calendars remain untouched.
+- The `meta.workRosterNov9To22V50Applied` marker prevents re-adding manually removed shifts after the first successful update. The original device data is protected by the existing pre-upgrade safety snapshot, and a failed save rolls the staging back.
+- A matching PWA cache version ensures the update reaches installed devices.
+
 ## PWA 1.20.9 — daily Travel Time, Breakfast, and Mum's right-hand lane
 
 - Every day **6 November–31 December 2026** gets two purple 15-minute **Travel Time** appointments: **09:00–09:15** and **09:45–10:00**. Exact matching manual records are retained and recoloured purple, not duplicated.
