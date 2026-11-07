@@ -727,3 +727,95 @@ test('Mum entries without end time appear on the right half and still support ta
   assert.ok(mum.className.includes('mumAppointment'));
   assert.equal(typeof mum.listeners.pointerdown,'function');
 });
+
+
+test('November 9–22 screenshot roster adds exactly eleven 19:00–23:00 work shifts and expected support blocks',async()=>{
+  const env=await app();
+  env.api.runStartupMaintenance();
+  const data=json(env.api.getState().data);
+  const dates=['2026-11-10','2026-11-11','2026-11-13','2026-11-14','2026-11-15','2026-11-16','2026-11-17','2026-11-18','2026-11-20','2026-11-21','2026-11-22'];
+  const dayOff=['2026-11-09','2026-11-12','2026-11-19'];
+  for(const date of dates){
+    const source=data[date].appts.filter(a=>a.source==='confirmed-waiter-roster-nov9-to22-2026');
+    assert.equal(source.length,1,date+' has one inserted waiter shift');
+    const shift=source[0];
+    assert.equal(shift.start,'19:00');assert.equal(shift.end,'23:00');
+    assert.equal(shift.who,'work');assert.equal(shift.category,'work');
+    assert.equal(shift.subcategory,'shift');assert.equal(shift.status,'pending');
+    const visible=json(env.api.mergedAppts(date));
+    assert.equal(visible.filter(a=>a.id===shift.id).length,1,date+' is displayed without duplicates');
+    for(const [name,start,end] of [
+      ['Get ready for work','18:00','18:30'],['Drive to work','18:30','19:00']
+    ]) assert.ok(visible.some(a=>a.title===name&&a.start===start&&a.end===end),date+' shows '+name);
+  }
+  for(const date of dayOff){
+    assert.equal((data[date]?.appts||[]).filter(a=>a.source==='confirmed-waiter-roster-nov9-to22-2026').length,0,date+' remains without newly added work');
+  }
+  assert.equal(Object.values(data).flatMap(d=>d.appts||[]).filter(a=>a.source==='confirmed-waiter-roster-nov9-to22-2026').length,11);
+  assert.equal(env.api.getState().meta.workRosterNov9To22V50Applied,true);
+  assert.deepEqual(json(env.api.getState().meta.workRosterNov9To22V50Summary),{added:11,skipped:0});
+  assert.equal((data['2026-11-23']?.appts||[]).filter(a=>a.source==='confirmed-waiter-roster-nov9-to22-2026').length,0);
+});
+
+test('work roster respects existing, overlapping and cancelled shifts without changing unrelated personal records',async()=>{
+  const original=[
+    {id:'existing',title:'Work',start:'19:00',end:'23:00',who:'work',subcategory:'shift',status:'completed',notes:'Already entered by Max'},
+    {id:'other-note',title:'Client meeting',start:'11:00',end:'12:00',who:'mine',notes:'Preserve this'}
+  ];
+  const overlap={id:'overlap',title:'Waiter',start:'18:30',end:'22:30',who:'work',subcategory:'shift',status:'pending',notes:'Manual shift time'};
+  const cancelled={id:'cancelled',title:'Work',start:'19:00',end:'23:00',who:'work',subcategory:'shift',status:'cancelled',notes:'Max cancelled this'};
+  const seed={data:{
+    '2026-11-10':{appts:original,todos:[{id:'todo',text:'Remember me'}],noteItems:[{id:'note',text:'Preserve notes'}]},
+    '2026-11-11':{appts:[overlap],todos:[],noteItems:[]},
+    '2026-11-13':{appts:[cancelled],todos:[],noteItems:[]}
+  },recurring:[],meta:{disabledDefaults:[],dailyRoutineNov6ToDec31V48Applied:true,dailyTravelBreakfastV49Applied:true,workRosterNov2To8V45Applied:true}};
+  const env=await app(storageFor(seed));
+  const before=json(env.api.getState());
+  env.api.runStartupMaintenance();
+  const after=json(env.api.getState());
+  assert.equal(after.meta.workRosterNov9To22V50Summary.skipped,3);
+  assert.equal(after.meta.workRosterNov9To22V50Summary.added,8);
+  for(const [date,id] of [['2026-11-10','existing'],['2026-11-11','overlap'],['2026-11-13','cancelled']]){
+    const actual=after.data[date].appts.find(a=>a.id===id);
+    const originalState=before.data[date].appts.find(a=>a.id===id);
+    assert.ok(actual);
+    for(const field of ['title','start','end','who','status','notes'])assert.equal(actual[field],originalState[field],date+' retains '+field);
+    assert.equal(after.data[date].appts.filter(a=>a.source==='confirmed-waiter-roster-nov9-to22-2026').length,0,date+' has no duplicate');
+  }
+  assert.equal(after.data['2026-11-10'].appts.find(a=>a.id==='other-note').notes,'Preserve this');
+  assert.equal(after.data['2026-11-10'].todos[0].text,'Remember me');
+  assert.equal(after.data['2026-11-10'].noteItems[0].text,'Preserve notes');
+  assert.equal(after.data['2026-11-14'].appts.filter(a=>a.source==='confirmed-waiter-roster-nov9-to22-2026').length,1);
+});
+
+test('work roster is idempotent on reopening and never re-adds intentionally removed new shifts',async()=>{
+  const env=await app();
+  env.api.runStartupMaintenance();
+  const original=json(env.api.getState());
+  const source='confirmed-waiter-roster-nov9-to22-2026';
+  const ids=original.data['2026-11-14'].appts.filter(a=>a.source===source).map(a=>a.id);
+  assert.equal(ids.length,1);
+  original.data['2026-11-14'].appts=original.data['2026-11-14'].appts.filter(a=>a.source!==source);
+  const reopened=await app(storageFor(original));
+  reopened.api.runStartupMaintenance();
+  const result=json(reopened.api.getState());
+  assert.equal(result.data['2026-11-14'].appts.filter(a=>a.source===source).length,0,'Removed shift is not resurrected');
+  assert.equal(result.data['2026-11-15'].appts.filter(a=>a.source===source).length,1);
+  assert.equal(result.meta.workRosterNov9To22V50Applied,true);
+});
+
+test('failed storage during new work-roster migration keeps original appointments and flags unchanged',async()=>{
+  const seed={data:{
+    '2026-11-10':{appts:[{id:'keep',title:'Unrelated appointment',start:'09:30',end:'10:00',who:'mine',notes:'Do not lose me'}],todos:[{id:'task',text:'Keep this'}],noteItems:[]}
+  },recurring:[],meta:{
+    disabledDefaults:[],dailyRoutineNov6ToDec31V48Applied:true,dailyTravelBreakfastV49Applied:true,workRosterNov2To8V45Applied:true
+  }};
+  const env=await app(storageFor(seed));
+  const before=json(env.api.getState());
+  env.localStorage.fail=key=>key==='max-planner-v1';
+  env.api.runStartupMaintenance();
+  assert.deepEqual(json(env.api.getState()),before,'In-memory changes roll back on a failed write');
+  assert.equal(JSON.parse(env.localStorage.getItem('max-planner-v1'))['2026-11-10'].appts[0].notes,'Do not lose me');
+  assert.equal(env.api.getState().meta.workRosterNov9To22V50Applied,undefined,'Migration is retryable');
+  assert.ok(env.document.getElementById('storageWarning'));
+});
