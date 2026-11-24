@@ -819,3 +819,101 @@ test('failed storage during new work-roster migration keeps original appointment
   assert.equal(env.api.getState().meta.workRosterNov9To22V50Applied,undefined,'Migration is retryable');
   assert.ok(env.document.getElementById('storageWarning'));
 });
+
+
+test('Nov 23–Dec 6 screenshots create exactly ten 18:30–22:30 Waiter shifts plus correctly timed preparation and commute',async()=>{
+  const env=await app();
+  env.api.runStartupMaintenance();
+  const state=json(env.api.getState()),data=state.data;
+  const dates=['2026-11-24','2026-11-25','2026-11-27','2026-11-28','2026-11-29',
+    '2026-11-30','2026-12-02','2026-12-04','2026-12-05','2026-12-06'];
+  const offDates=['2026-11-23','2026-11-26','2026-12-01','2026-12-03'];
+  const source='confirmed-waiter-roster-nov23-dec6-2026';
+  for(const key of dates){
+    const shifts=data[key].appts.filter(a=>a.source===source);
+    assert.equal(shifts.length,1,key+' has exactly one new Waiter shift');
+    const shift=shifts[0];
+    assert.equal(shift.start,'18:30');
+    assert.equal(shift.end,'22:30');
+    assert.equal(shift.who,'work');
+    assert.equal(shift.category,'work');
+    assert.equal(shift.subcategory,'shift');
+    assert.equal(shift.status,'pending');
+    const displayed=json(env.api.mergedAppts(key));
+    assert.equal(displayed.filter(a=>a.id===shift.id).length,1,key+' shift shown exactly once');
+    for(const [title,start,end] of [
+      ['Get ready for work','17:30','18:00'],['Drive to work','18:00','18:30']
+    ]){
+      assert.ok(displayed.some(a=>a.title===title&&a.start===start&&a.end===end),
+        key+' auto support includes '+title+' '+start+'–'+end);
+    }
+  }
+  for(const key of offDates){
+    assert.equal((data[key]?.appts||[]).filter(a=>a.source===source).length,0,key+' stays without new work');
+  }
+  assert.equal(Object.values(data).flatMap(d=>d.appts||[]).filter(a=>a.source===source).length,10);
+  assert.equal(state.meta.waiterRosterNov23Dec6V51Applied,true);
+  assert.deepEqual(state.meta.waiterRosterNov23Dec6V51Summary,{added:10,skipped:0});
+  assert.equal((data['2026-12-07']?.appts||[]).filter(a=>a.source===source).length,0,'No shifts after December 6');
+  assert.ok(data['2026-11-22'].appts.some(a=>a.source==='confirmed-waiter-roster-nov9-to22-2026'&&a.start==='19:00'&&a.end==='23:00'),
+    'Previous 19:00–23:00 shifts are unchanged');
+});
+
+test('new waiter roster preserves existing, edited and cancelled shifts without doubling or changing personal notes',async()=>{
+  const matching={id:'manual',title:'Waiter',start:'18:30',end:'22:30',who:'work',subcategory:'shift',status:'completed',notes:'Do not lose completed status'};
+  const overlapping={id:'edit',title:'Waiter',start:'19:00',end:'23:00',who:'work',subcategory:'shift',status:'pending',notes:'Manually changed working hours'};
+  const cancelled={id:'cancel',title:'Work',start:'18:30',end:'22:30',who:'work',subcategory:'shift',status:'cancelled',notes:'Deliberately cancelled'};
+  const personal={id:'mine',title:'Personal appointment',who:'mine',start:'12:00',end:'13:00',notes:'Keep this appointment'};
+  const seed={data:{
+    '2026-11-24':{appts:[matching,personal],todos:[{id:'task',text:'Important task'}],noteItems:[{id:'note',text:'Important note'}]},
+    '2026-11-25':{appts:[overlapping],todos:[],noteItems:[]},
+    '2026-11-27':{appts:[cancelled],todos:[],noteItems:[]}
+  },recurring:[],meta:{
+    disabledDefaults:[],dailyRoutineNov6ToDec31V48Applied:true,
+    dailyTravelBreakfastV49Applied:true,workRosterNov9To22V50Applied:true
+  }};
+  const env=await app(storageFor(seed)),before=json(env.api.getState());
+  env.api.runStartupMaintenance();
+  const after=json(env.api.getState()),source='confirmed-waiter-roster-nov23-dec6-2026';
+  assert.equal(after.meta.waiterRosterNov23Dec6V51Summary.skipped,3);
+  assert.equal(after.meta.waiterRosterNov23Dec6V51Summary.added,7);
+  for(const [key,id] of [['2026-11-24','manual'],['2026-11-25','edit'],['2026-11-27','cancel']]){
+    const old=before.data[key].appts.find(a=>a.id===id);
+    const current=after.data[key].appts.find(a=>a.id===id);
+    assert.ok(current,key+' retains original shift');
+    for(const field of ['title','start','end','status','notes'])assert.equal(current[field],old[field]);
+    assert.equal(after.data[key].appts.filter(a=>a.source===source).length,0,key+' not duplicated');
+  }
+  assert.equal(after.data['2026-11-24'].appts.find(a=>a.id==='mine').notes,'Keep this appointment');
+  assert.equal(after.data['2026-11-24'].todos[0].text,'Important task');
+  assert.equal(after.data['2026-11-24'].noteItems[0].text,'Important note');
+  assert.equal(after.data['2026-11-28'].appts.filter(a=>a.source===source).length,1,'Other roster dates still scheduled');
+});
+
+test('new roster is added only once and does not resurrect a shift removed by the user after upgrade',async()=>{
+  const env=await app();env.api.runStartupMaintenance();
+  const original=json(env.api.getState());
+  const source='confirmed-waiter-roster-nov23-dec6-2026';
+  assert.equal(original.data['2026-12-04'].appts.filter(a=>a.source===source).length,1);
+  original.data['2026-12-04'].appts=original.data['2026-12-04'].appts.filter(a=>a.source!==source);
+  const reopened=await app(storageFor(original));reopened.api.runStartupMaintenance();
+  const result=json(reopened.api.getState());
+  assert.equal(result.data['2026-12-04'].appts.filter(a=>a.source===source).length,0);
+  assert.equal(result.data['2026-12-05'].appts.filter(a=>a.source===source).length,1);
+  assert.equal(result.meta.waiterRosterNov23Dec6V51Applied,true);
+});
+
+test('if saving new shifts fails, old appointments and migration markers stay unchanged',async()=>{
+  const seed={data:{
+    '2026-11-24':{appts:[{id:'keep',start:'11:30',end:'12:30',who:'mine',title:'Personal work',notes:'Keep me'}],
+      todos:[{id:'t',text:'Preserve'}],noteItems:[]}
+  },recurring:[],meta:{disabledDefaults:[],dailyRoutineNov6ToDec31V48Applied:true,
+    dailyTravelBreakfastV49Applied:true,workRosterNov9To22V50Applied:true}};
+  const env=await app(storageFor(seed)),before=json(env.api.getState());
+  env.localStorage.fail=key=>key==='max-planner-v1';
+  env.api.runStartupMaintenance();
+  assert.deepEqual(json(env.api.getState()),before,'Failed write rolls back local migration');
+  assert.equal(JSON.parse(env.localStorage.getItem('max-planner-v1'))['2026-11-24'].appts[0].notes,'Keep me');
+  assert.equal(env.api.getState().meta.waiterRosterNov23Dec6V51Applied,undefined);
+  assert.ok(env.document.getElementById('storageWarning'));
+});
