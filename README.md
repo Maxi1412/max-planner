@@ -2,6 +2,18 @@
 
 Phone-first calendar PWA for Max and Mum. Published from `main` through GitHub Pages.
 
+## PWA 1.20.11 — Waiter shifts, 23 November–6 December 2026
+
+- Two user-provided weekly screenshots confirm **10 Waiter shifts** from **18:30 to 22:30** (4 hours each, 40 hours total):
+  - **23–29 November:** Tuesday 24, Wednesday 25, Friday 27, Saturday 28, Sunday 29. No shifts shown Monday 23 or Thursday 26.
+  - **30 November–6 December:** Monday 30, Wednesday 2 December, Friday 4 December, Saturday 5 December, Sunday 6 December. No shifts shown Tuesday 1 or Thursday 3.
+- A one-time device-local migration adds editable **Work** appointments (category **work**, subcategory **shift**) on the ten dates. The earlier 19:00–23:00 shifts are **not changed**.
+- The existing automatic preparation/commute calculation derives **17:30–18:00 Get ready for work** and **18:00–18:30 Drive to work** from each 18:30 shift, without creating unrelated shifts.
+- Pre-existing exact shifts (including cancelled ones) and manually modified overlapping shifts are preserved, never duplicated or overwritten.
+- Empty dates in the screenshots are left unchanged, without forced **OFF** markers. Appointments, notes, to-dos and Mum calendar sync on every date are preserved.
+- The flag `waiterRosterNov23Dec6V51Applied` prevents repeats if a newly added shift is later removed or edited. The existing pre-upgrade snapshot and staged local save rollback protect the user's data.
+- A matching PWA shell-cache version makes the update available on installed devices.
+
 ## PWA 1.20.10 — waiter shifts 9–22 November 2026
 
 - The two user-provided weekly roster screenshots confirm **11 waiter shifts**, each from **19:00–23:00**:
